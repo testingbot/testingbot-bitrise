@@ -4,6 +4,8 @@ _tmp/
 .bitrise.secrets.yml
 # `bitrise run check` drops a golangci-lint binary here
 bin/
+# downloaded e2e fixtures
+.fixtures/
 
 # macOS
 .DS_Store

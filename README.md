@@ -88,9 +88,21 @@ account and spends no device minutes. The stubs record the argument vector each
 Step builds, which is what lets the tests assert on flag mapping and drive the
 CLI's exit code to check how a test failure becomes a build result.
 
-Live checks live in each Step's own `bitrise.yml` `test` workflow and do run real
-tests on real devices. They need credentials and sample artifacts; see the
-`app.envs` block at the top of each one.
+Live checks run real tests on real devices and spend device minutes:
+
+```bash
+scripts/e2e.sh espresso     # or upload-app, xcuitest, maestro, tunnel
+```
+
+It reads credentials from a git-ignored `.bitrise.secrets.yml` at the repo root
+and downloads the sample APKs from
+[android-espresso-demo-app](https://github.com/testingbot/android-espresso-demo-app):
+
+```yaml
+envs:
+- TESTINGBOT_KEY: <your key>
+- TESTINGBOT_SECRET: <your secret>
+```
 
 For the `step.yml` audit and the live workflows you need the Bitrise CLI:
 
