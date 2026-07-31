@@ -1,0 +1,15 @@
+# Bitrise
+.bitrise*
+_tmp/
+.bitrise.secrets.yml
+# `bitrise run check` drops a golangci-lint binary here
+bin/
+
+# macOS
+.DS_Store
+
+# Editors / tooling
+.serena/
+.ruby-lsp/
+.idea/
+*.swp

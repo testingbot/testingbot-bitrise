@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+#
+# Stand-in for `envman` used by tests/run.sh.
+#
+# The real envman needs an initialised env store, which only exists inside a
+# Bitrise build. Stubbing it keeps the suite deterministic whether or not the
+# Bitrise CLI is installed on the machine, and lets the tests assert on exactly
+# what each Step exports.
+
+set -eo pipefail
+
+if [ "${1:-}" = "add" ]; then
+  key=""
+  value=""
+  shift
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+    --key)
+      key="$2"
+      shift 2
+      ;;
+    --value)
+      value="$2"
+      shift 2
+      ;;
+    *) shift ;;
+    esac
+  done
+  printf '%s=%s\n' "$key" "$value"
+  [ -n "${STUB_ENVMAN_FILE:-}" ] && printf '%s=%s\n' "$key" "$value" >>"$STUB_ENVMAN_FILE"
+  exit 0
+fi
+
+exit 0

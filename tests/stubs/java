@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# Stand-in for `java` used by tests/run.sh, playing the part of
+# testingbot-tunnel.jar.
+#
+#   STUB_JAVA_MODE=ready   touch the readyfile after STUB_JAVA_DELAY, then idle
+#   STUB_JAVA_MODE=crash   write to the log and exit non-zero
+#   STUB_JAVA_MODE=hang    never become ready
+
+set -uo pipefail
+
+if [ "${1:-}" = "-version" ] || [ "${1:-}" = "--version" ]; then
+  echo "openjdk version \"17.0.10\" 2024-01-16"
+  exit 0
+fi
+
+ready_file=""
+log_file=""
+prev=""
+for arg in "$@"; do
+  case "$prev" in
+  --readyfile) ready_file="$arg" ;;
+  --logfile) log_file="$arg" ;;
+  esac
+  prev="$arg"
+done
+
+[ -n "$log_file" ] && echo "[stub tunnel] started with: $*" >"$log_file"
+
+case "${STUB_JAVA_MODE:-ready}" in
+crash)
+  [ -n "$log_file" ] && echo "[stub tunnel] could not authenticate" >>"$log_file"
+  exit 3
+  ;;
+hang)
+  sleep 60
+  exit 0
+  ;;
+*)
+  sleep "${STUB_JAVA_DELAY:-0}"
+  [ -n "$ready_file" ] && : >"$ready_file"
+  [ -n "$log_file" ] && echo "[stub tunnel] ready" >>"$log_file"
+  # Stay alive like the real tunnel does, until signalled.
+  trap 'exit 0' USR1 TERM
+  sleep 60
+  ;;
+esac

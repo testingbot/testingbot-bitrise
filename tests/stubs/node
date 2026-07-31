@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#
+# Stand-in for `node` used by tests/run.sh, so the Node version check can be
+# exercised on any machine. Set $STUB_NODE_VERSION to change what it reports.
+
+if [ "$1" = "--version" ]; then
+  echo "${STUB_NODE_VERSION:-v22.0.0}"
+  exit 0
+fi
+
+echo "[stub node] $*"
+exit 0

@@ -1,0 +1,134 @@
+format_version: "11"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+app:
+  envs:
+  # Set these in .bitrise.secrets.yml (git-ignored) when running locally, or as
+  # Secrets on the Bitrise app that builds this repository.
+  #  - TESTINGBOT_KEY
+  #  - TESTINGBOT_SECRET
+
+  # Used by `share-this-step`.
+  - BITRISE_STEP_ID: testingbot-tunnel
+  - BITRISE_STEP_VERSION: 1.0.0
+  - BITRISE_STEP_GIT_CLONE_URL: https://github.com/testingbot/bitrise-step-testingbot-tunnel.git
+  - MY_STEPLIB_REPO_FORK_GIT_URL: $MY_STEPLIB_REPO_FORK_GIT_URL
+
+workflows:
+  test:
+    summary: Opens a real tunnel, proves it carries traffic, then closes it.
+    description: |-
+      Requires TESTINGBOT_KEY and TESTINGBOT_SECRET. Offline tests that need no
+      credentials live in tests/run.sh in the development monorepo.
+    steps:
+    - script:
+        title: Fail fast if the test configuration is missing
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            for var in TESTINGBOT_KEY TESTINGBOT_SECRET; do
+              if [ -z "${!var}" ]; then
+                echo "error: \$$var is not set" >&2
+                exit 1
+              fi
+            done
+
+    - path::./:
+        title: Start the tunnel
+        inputs:
+        - testingbot_key: $TESTINGBOT_KEY
+        - testingbot_secret: $TESTINGBOT_SECRET
+        - tunnel_identifier: step-selftest-$BITRISE_BUILD_NUMBER
+        - ready_timeout: "180"
+
+    - script:
+        title: Check the tunnel is up and registered
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            echo "TESTINGBOT_TUNNEL_IDENTIFIER=$TESTINGBOT_TUNNEL_IDENTIFIER"
+            echo "TESTINGBOT_TUNNEL_PID=$TESTINGBOT_TUNNEL_PID"
+
+            [ -n "$TESTINGBOT_TUNNEL_PID" ] || {
+              echo "error: no tunnel pid was exported" >&2; exit 1; }
+            kill -0 "$TESTINGBOT_TUNNEL_PID" || {
+              echo "error: the tunnel process is not running" >&2; exit 1; }
+
+            # TestingBot should now list the tunnel as active.
+            curl --fail --silent --show-error \
+              -u "$TESTINGBOT_KEY:$TESTINGBOT_SECRET" \
+              https://api.testingbot.com/v1/tunnel/list | tee /tmp/tunnels.json
+            grep -q "$TESTINGBOT_TUNNEL_IDENTIFIER" /tmp/tunnels.json || {
+              echo "error: TestingBot does not list this tunnel as active" >&2; exit 1; }
+
+    - script:
+        title: Stop the tunnel
+        is_always_run: true
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            # The dedicated Stop Step lives in its own repository, so here we
+            # just make sure the self-test leaves nothing running.
+            [ -n "$TESTINGBOT_TUNNEL_PID" ] && kill "$TESTINGBOT_TUNNEL_PID" 2>/dev/null
+            exit 0
+
+  check:
+    summary: Lints step.yml and the README against each other.
+    steps:
+    - git::https://github.com/bitrise-steplib/steps-check.git:
+        inputs:
+        # These are bash Steps: there is no Go code to lint, and no Go unit
+        # tests to run. The offline suite lives in the development monorepo.
+        - workflow: lint
+        - skip_go_checks: "yes"
+
+  generate_readme:
+    summary: Regenerates README.md from step.yml plus docs/.
+    steps:
+    - git::https://github.com/bitrise-steplib/steps-readme-generator.git@main:
+        inputs:
+        - example_section: docs/examples.md
+        - contrib_section: docs/contributing.md
+
+  audit-this-step:
+    steps:
+    - script:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            stepman audit --step-yml ./step.yml
+
+  share-this-step:
+    description: |-
+      Shares this version of the Step to a fork of the Bitrise StepLib.
+
+      Set MY_STEPLIB_REPO_FORK_GIT_URL and bump BITRISE_STEP_VERSION above, tag
+      the release in git, then run this workflow and open a pull request.
+    envs:
+    - BITRISE_STEP_ID: $BITRISE_STEP_ID
+    - BITRISE_STEP_VERSION: $BITRISE_STEP_VERSION
+    - BITRISE_STEP_GIT_CLONE_URL: $BITRISE_STEP_GIT_CLONE_URL
+    - MY_STEPLIB_REPO_FORK_GIT_URL: $MY_STEPLIB_REPO_FORK_GIT_URL
+    before_run:
+    - audit-this-step
+    steps:
+    - script:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            for var in MY_STEPLIB_REPO_FORK_GIT_URL BITRISE_STEP_ID BITRISE_STEP_VERSION BITRISE_STEP_GIT_CLONE_URL; do
+              if [ -z "${!var}" ]; then
+                echo "error: \$$var is not set" >&2
+                exit 1
+              fi
+            done
+            bitrise share start -c "$MY_STEPLIB_REPO_FORK_GIT_URL"
+            bitrise share create --stepid "$BITRISE_STEP_ID" \
+              --tag "$BITRISE_STEP_VERSION" \
+              --git "$BITRISE_STEP_GIT_CLONE_URL"
+            bitrise share finish

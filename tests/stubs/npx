@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#
+# Stand-in for `npx` used by tests/run.sh.
+#
+# Records the argument vector it was called with to $STUB_ARGV_FILE, writes a
+# JUnit report into the directory given by --report-output-dir (so the report
+# export path is genuinely exercised), and exits with $STUB_NPX_EXIT.
+
+set -eo pipefail
+
+: >"${STUB_ARGV_FILE:-/dev/null}"
+for arg in "$@"; do
+  printf '%s\n' "$arg" >>"${STUB_ARGV_FILE:-/dev/null}"
+done
+
+# Mirror the CLI's own progress output so the log looks realistic.
+echo "[stub npx] $*"
+
+report_dir=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--report-output-dir" ]; then
+    report_dir="$arg"
+  fi
+  prev="$arg"
+done
+
+if [ -n "$report_dir" ]; then
+  mkdir -p "$report_dir"
+  cat >"${report_dir}/junit.xml" <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="ExampleSuite" tests="2" failures="0">
+    <testcase classname="com.example.LoginTest" name="signsIn"/>
+    <testcase classname="com.example.HomeTest" name="showsFeed"/>
+  </testsuite>
+</testsuites>
+XML
+fi
+
+exit "${STUB_NPX_EXIT:-0}"

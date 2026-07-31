@@ -1,0 +1,142 @@
+format_version: "11"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+app:
+  envs:
+  # Set these in .bitrise.secrets.yml (git-ignored) when running locally, or as
+  # Secrets on the Bitrise app that builds this repository.
+  #  - TESTINGBOT_KEY
+  #  - TESTINGBOT_SECRET
+  #
+  # A publicly reachable sample app used by the `test` workflow. Point it at a
+  # real .apk/.ipa -- TestingBot parses the binary, so a dummy file is rejected.
+  - SAMPLE_APP_URL: $SAMPLE_APP_URL
+
+  # Used by `share-this-step`.
+  - BITRISE_STEP_ID: testingbot-upload-app
+  - BITRISE_STEP_VERSION: 1.0.0
+  - BITRISE_STEP_GIT_CLONE_URL: https://github.com/testingbot/bitrise-step-testingbot-app-upload.git
+  - MY_STEPLIB_REPO_FORK_GIT_URL: $MY_STEPLIB_REPO_FORK_GIT_URL
+
+workflows:
+  test:
+    summary: Uploads a real app to TestingBot and checks the exported outputs.
+    description: |-
+      Requires TESTINGBOT_KEY, TESTINGBOT_SECRET and SAMPLE_APP_URL.
+      Offline tests that need no credentials live in tests/run.sh in the
+      development monorepo.
+    steps:
+    - script:
+        title: Fail fast if the test configuration is missing
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            for var in TESTINGBOT_KEY TESTINGBOT_SECRET SAMPLE_APP_URL; do
+              if [ -z "${!var}" ]; then
+                echo "error: \$$var is not set -- see bitrise.yml for what this workflow needs" >&2
+                exit 1
+              fi
+            done
+
+    - path::./:
+        title: Upload from a URL, with a generated app key
+        inputs:
+        - testingbot_key: $TESTINGBOT_KEY
+        - testingbot_secret: $TESTINGBOT_SECRET
+        - app_url: $SAMPLE_APP_URL
+        - wait_for_processing: "true"
+
+    - script:
+        title: Check the outputs
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            echo "TESTINGBOT_APP_URL=$TESTINGBOT_APP_URL"
+            echo "TESTINGBOT_APP_STATE=$TESTINGBOT_APP_STATE"
+            case "$TESTINGBOT_APP_URL" in
+              tb://*) ;;
+              *) echo "error: expected a tb:// identifier, got '$TESTINGBOT_APP_URL'" >&2; exit 1 ;;
+            esac
+            [ "$TESTINGBOT_APP_STATE" = "READY" ] || {
+              echo "error: expected state READY, got '$TESTINGBOT_APP_STATE'" >&2; exit 1; }
+            [ -n "$TESTINGBOT_APP_ID" ] || {
+              echo "error: TESTINGBOT_APP_ID was not exported" >&2; exit 1; }
+
+    - path::./:
+        title: Re-upload under a stable app key
+        inputs:
+        - testingbot_key: $TESTINGBOT_KEY
+        - testingbot_secret: $TESTINGBOT_SECRET
+        - app_url: $SAMPLE_APP_URL
+        - app_key: bitrise-step-selftest
+
+    - script:
+        title: Check that the stable key was honoured
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            [ "$TESTINGBOT_APP_URL" = "tb://bitrise-step-selftest" ] || {
+              echo "error: expected tb://bitrise-step-selftest, got '$TESTINGBOT_APP_URL'" >&2
+              exit 1
+            }
+
+  check:
+    summary: Lints step.yml and the README against each other.
+    steps:
+    - git::https://github.com/bitrise-steplib/steps-check.git:
+        inputs:
+        # These are bash Steps: there is no Go code to lint, and no Go unit
+        # tests to run. The offline suite lives in the development monorepo.
+        - workflow: lint
+        - skip_go_checks: "yes"
+
+  generate_readme:
+    summary: Regenerates README.md from step.yml plus docs/.
+    steps:
+    - git::https://github.com/bitrise-steplib/steps-readme-generator.git@main:
+        inputs:
+        - example_section: docs/examples.md
+        - contrib_section: docs/contributing.md
+
+  audit-this-step:
+    steps:
+    - script:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            stepman audit --step-yml ./step.yml
+
+  share-this-step:
+    description: |-
+      Shares this version of the Step to a fork of the Bitrise StepLib.
+
+      Set MY_STEPLIB_REPO_FORK_GIT_URL and bump BITRISE_STEP_VERSION above, tag
+      the release in git, then run this workflow and open a pull request.
+    envs:
+    - BITRISE_STEP_ID: $BITRISE_STEP_ID
+    - BITRISE_STEP_VERSION: $BITRISE_STEP_VERSION
+    - BITRISE_STEP_GIT_CLONE_URL: $BITRISE_STEP_GIT_CLONE_URL
+    - MY_STEPLIB_REPO_FORK_GIT_URL: $MY_STEPLIB_REPO_FORK_GIT_URL
+    before_run:
+    - audit-this-step
+    steps:
+    - script:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -eo pipefail
+            for var in MY_STEPLIB_REPO_FORK_GIT_URL BITRISE_STEP_ID BITRISE_STEP_VERSION BITRISE_STEP_GIT_CLONE_URL; do
+              if [ -z "${!var}" ]; then
+                echo "error: \$$var is not set" >&2
+                exit 1
+              fi
+            done
+            bitrise share start -c "$MY_STEPLIB_REPO_FORK_GIT_URL"
+            bitrise share create --stepid "$BITRISE_STEP_ID" \
+              --tag "$BITRISE_STEP_VERSION" \
+              --git "$BITRISE_STEP_GIT_CLONE_URL"
+            bitrise share finish

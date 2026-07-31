@@ -1,0 +1,194 @@
+title: |-
+  TestingBot Tunnel
+summary: |-
+  Starts a TestingBot Tunnel so your tests can reach a local or staging environment.
+description: |
+  Starts a [TestingBot Tunnel](https://testingbot.com/support/other/tunnel) in the
+  background and waits until it is genuinely ready, so the devices in
+  TestingBot's cloud can reach an app that isn't publicly routable — a staging
+  host, a service on the build machine, or anything behind your firewall.
+
+  Pair it with the **TestingBot Tunnel Stop** Step at the end of the Workflow.
+  Bitrise has no post-build hook, so the tunnel has to be shut down by a Step
+  that always runs.
+
+  You only need this for Appium and Selenium tests. The **Espresso**, **XCUITest**
+  and **Maestro** Steps can open their own tunnel with their `tunnel` input.
+
+  ### Configuring the Step
+
+  1. Add your TestingBot **key** and **secret** as Bitrise Secrets, and reference
+     them from the `testingbot_key` / `testingbot_secret` inputs.
+  2. Add this Step before the Step that runs your tests.
+  3. Add **TestingBot Tunnel Stop** as the last Step of the Workflow.
+  4. In your tests, set `tunnelIdentifier` inside `tb:options` to the exported
+     `$TESTINGBOT_TUNNEL_IDENTIFIER`.
+
+  ### Requirements
+
+  The tunnel is a Java program and needs **Java 11 or newer** on the Stack. Most
+  Android Stacks ship a JDK; on a plain macOS Stack you may need an
+  `Install Java` Step first.
+
+  ### Troubleshooting
+
+  If the tunnel fails to start, the Step prints the full tunnel log — that log
+  answers nearly every tunnel question. Raise `ready_timeout` on a slow network.
+
+  ### Useful links
+
+  - [TestingBot Tunnel](https://testingbot.com/support/other/tunnel)
+  - [Tunnel command line reference](https://testingbot.com/support/tunnel/commandline)
+  - [Running multiple tunnels](https://testingbot.com/support/tunnel/multiple)
+
+website: https://github.com/testingbot/bitrise-step-testingbot-tunnel
+source_code_url: https://github.com/testingbot/bitrise-step-testingbot-tunnel
+support_url: https://github.com/testingbot/bitrise-step-testingbot-tunnel/issues
+
+type_tags:
+- utility
+
+toolkit:
+  bash:
+    entry_file: step.sh
+
+deps:
+  brew:
+  - name: curl
+  - name: unzip
+  apt_get:
+  - name: curl
+  - name: unzip
+
+is_always_run: false
+is_skippable: false
+
+inputs:
+- testingbot_key: $TESTINGBOT_KEY
+  opts:
+    title: TestingBot API key
+    summary: Your TestingBot API key.
+    description: |-
+      Your TestingBot API key, from the
+      [member area](https://testingbot.com/members/user/api).
+
+      Store it as a Bitrise Secret and reference it here.
+    is_required: true
+    is_expand: true
+    is_sensitive: true
+
+- testingbot_secret: $TESTINGBOT_SECRET
+  opts:
+    title: TestingBot API secret
+    summary: Your TestingBot API secret.
+    description: |-
+      Your TestingBot API secret, from the
+      [member area](https://testingbot.com/members/user/api).
+
+      Store it as a Bitrise Secret and reference it here.
+    is_required: true
+    is_expand: true
+    is_sensitive: true
+
+- tunnel_identifier: bitrise-$BITRISE_BUILD_NUMBER
+  opts:
+    title: Tunnel identifier
+    summary: Name for this tunnel, used to route tests through it.
+    description: |-
+      Names the tunnel so tests can ask for it explicitly, and so several
+      tunnels can run in parallel without colliding.
+
+      Pass the same value as `tunnelIdentifier` inside `tb:options` in your
+      test capabilities. The default keeps concurrent Bitrise builds apart.
+    is_required: true
+    is_expand: true
+
+- ready_timeout: "120"
+  opts:
+    category: Startup
+    title: Ready timeout (seconds)
+    summary: How long to wait for the tunnel to become usable.
+    description: |-
+      Maximum seconds to wait for the tunnel to signal that it is ready before
+      failing the Step. The Step watches the tunnel's own ready file rather
+      than its console output, so this is a real readiness check.
+    is_required: true
+
+- log_level: info
+  opts:
+    category: Startup
+    title: Log level
+    summary: Verbosity of the tunnel log.
+    description: |-
+      The tunnel's log level. The log is printed automatically if the tunnel
+      fails to start; raise this to `debug` when diagnosing a connection
+      problem.
+    value_options:
+    - error
+    - warn
+    - info
+    - debug
+    - trace
+    is_required: true
+
+- additional_args:
+  opts:
+    category: Startup
+    title: Additional tunnel arguments
+    summary: Extra flags passed straight to testingbot-tunnel.jar.
+    description: |-
+      Appended verbatim to the tunnel command line, for options this Step
+      doesn't expose — for example `--fast-fail-regexps`, `--proxy`, `--pac`
+      or `--dns`.
+
+      See the
+      [command line reference](https://testingbot.com/support/tunnel/commandline).
+    is_expand: true
+
+- download_url: https://testingbot.com/downloads/testingbot-tunnel.zip
+  opts:
+    category: Download
+    title: Tunnel download URL
+    summary: Where to fetch the tunnel from.
+    description: |-
+      The tunnel archive to download. Point this at an internal mirror if your
+      build machines can't reach testingbot.com directly.
+    is_required: true
+    is_expand: true
+
+- download_sha256:
+  opts:
+    category: Download
+    title: Expected SHA-256
+    summary: Verify the downloaded archive against this checksum.
+    description: |-
+      SHA-256 of the tunnel archive. When set, the Step refuses to run a
+      download that doesn't match.
+
+      Leave empty to skip verification — the download still happens over
+      HTTPS. Set it if you pin a specific tunnel build via `download_url`.
+    is_expand: true
+
+outputs:
+- TESTINGBOT_TUNNEL_IDENTIFIER:
+  opts:
+    title: Tunnel identifier
+    summary: The identifier the tunnel was started with.
+    description: |-
+      Pass this as `tunnelIdentifier` inside `tb:options` in your test
+      capabilities to route the session through this tunnel.
+
+- TESTINGBOT_TUNNEL_PID:
+  opts:
+    title: Tunnel process ID
+    summary: PID of the running tunnel, used by the Tunnel Stop Step.
+
+- TESTINGBOT_TUNNEL_LOG_PATH:
+  opts:
+    title: Tunnel log path
+    summary: Path to the tunnel's log file.
+
+- TESTINGBOT_TUNNEL_READY_FILE:
+  opts:
+    title: Tunnel ready file
+    summary: The file the tunnel touches once it is ready.
