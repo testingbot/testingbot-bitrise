@@ -6,45 +6,25 @@ Publishing means two things: mirroring the Step into its own public repository
 
 ## Repositories
 
-Three kinds of repository are involved:
+Three kinds of repository are involved, and all of them now exist:
 
-| Repository | Role | State |
+| Repository | Role | Notes |
 | --- | --- | --- |
-| `testingbot/testingbot-bitrise` | this monorepo — where the work happens | **needs creating** |
-| `testingbot/bitrise-step-testingbot-app-upload` | mirror of `steps/testingbot-upload-app` | exists since 2021, default branch **`master`**, tag `0.0.1` |
-| `testingbot/bitrise-step-testingbot-{espresso,xcuitest,maestro,tunnel,tunnel-stop}` | the other five mirrors | **need creating** |
-| `testingbot/bitrise-steplib` | fork of the StepLib that `bitrise share` writes into | exists but **5 years stale** — resync before use |
+| [`testingbot/testingbot-bitrise`](https://github.com/testingbot/testingbot-bitrise) | this monorepo — where the work happens | public, `main` |
+| [`testingbot/bitrise-step-testingbot-app-upload`](https://github.com/testingbot/bitrise-step-testingbot-app-upload) | mirror of `steps/testingbot-upload-app` | predates the rest: default branch is **`master`**, and it carries the published `0.0.1` tag |
+| `testingbot/bitrise-step-testingbot-{espresso,xcuitest,maestro,tunnel,tunnel-stop}` | the other five mirrors | public, empty until the first `git subtree push` |
+| [`testingbot/bitrise-steplib`](https://github.com/testingbot/bitrise-steplib) | fork of the StepLib that `bitrise share` writes into | synced to upstream |
 
 `scripts/publish.sh` asks each mirror for its own default branch, so the
-`master`/`main` split between the old and new repos is handled for you.
+`master`/`main` split between the old repo and the new ones is handled for you.
 
-### One-off setup
+### Before each release
 
-Create the monorepo and push it:
-
-```bash
-gh repo create testingbot/testingbot-bitrise --public \
-  --description "TestingBot Steps for Bitrise"
-git remote add origin git@github.com:testingbot/testingbot-bitrise.git
-git push -u origin main
-```
-
-Create the five missing mirrors. They can be empty — `git subtree push` populates
-them:
+Resync the StepLib fork, or `bitrise share` builds its pull request against
+stale history:
 
 ```bash
-for s in espresso xcuitest maestro tunnel tunnel-stop; do
-  gh repo create "testingbot/bitrise-step-testingbot-$s" --public \
-    --description "TestingBot $s Step for Bitrise"
-done
-```
-
-**Resync the StepLib fork before sharing anything.** It was forked in 2021 and is
-thousands of commits behind; `bitrise share` would otherwise build a pull request
-against ancient history:
-
-```bash
-gh repo sync testingbot/bitrise-steplib --source bitrise-io/bitrise-steplib --force
+gh repo sync testingbot/bitrise-steplib --source bitrise-io/bitrise-steplib
 export MY_STEPLIB_REPO_FORK_GIT_URL=https://github.com/testingbot/bitrise-steplib.git
 ```
 
