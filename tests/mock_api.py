@@ -3,37 +3,62 @@
 
 Implements just enough of https://testingbot.com/support/api to exercise the
 Steps offline: basic auth, POST /v1/storage (file and url forms), POST
-/v1/storage/<appkey>, and GET /v1/storage/<appkey> with a PROCESSING -> READY
-transition so the polling loop is genuinely exercised.
+/v1/storage/<appkey>, and GET /v1/storage/<appkey>.
+
+Shaped to match what the live API actually returns, verified against
+api.testingbot.com. Two things here are easy to get wrong from the docs alone:
+
+  - POST returns ONLY {"app_url": "tb://..."} -- no id, type or version. Those
+    come from a follow-up GET.
+  - The upload is synchronous but the metadata extraction is not. A fresh app
+    reports state PROCESSING with a null version for a few seconds, then DONE
+    with the version filled in.
+
+`type` is a platform ("ANDROID"/"IOS"/"OTHER"), not a file extension.
+
+An appkey containing "slowmeta" stays PROCESSING for two GETs before going
+DONE, and one containing "stuckmeta" never leaves PROCESSING, so the Step's
+polling and its give-up path are both exercised without a real upload.
 """
 
 import base64
 import json
 import re
 import sys
-import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 VALID_KEY = "test-key"
 VALID_SECRET = "test-secret"
 
-# Number of GET /v1/storage/<key> polls that report PROCESSING before READY.
-POLLS_BEFORE_READY = 2
+# appkey -> number of GETs served so far, for the PROCESSING simulation.
+GETS = {}
 
-state_lock = threading.Lock()
-poll_counts = {}
+SLOW_META_GETS = 2
 
 
-def app_payload(appkey, state):
+def app_state(appkey):
+    """PROCESSING until the metadata job would have finished."""
+    if "stuckmeta" in appkey:
+        return "PROCESSING"
+    if "slowmeta" in appkey and GETS.get(appkey, 0) <= SLOW_META_GETS:
+        return "PROCESSING"
+    return "DONE"
+
+
+def app_payload(appkey):
+    """What GET /v1/storage/<appkey> returns, field for field."""
+    state = app_state(appkey)
     return {
         "id": 12345,
         "app_url": "tb://%s" % appkey,
         "url": "https://testingbot.example/download/%s" % appkey,
         "filename": "Application-debug.apk",
-        "type": "apk",
-        "version": "1.4.2" if state == "READY" else "",
-        "min_device_version": "9.0",
-        "thumb": "https://testingbot.example/thumb/%s.png" % appkey,
+        "type": "ANDROID",
+        # The metadata job populates these, so they are null until it is DONE.
+        "version": None if state == "PROCESSING" else "1.4.2",
+        "min_device_version": None if state == "PROCESSING" else "9.0",
+        "thumb": None if state == "PROCESSING"
+        else "https://testingbot.example/thumb/%s.png" % appkey,
         "created_at": "2026-07-31T10:30:42.000Z",
         "state": state,
         "sim_only": False,
@@ -86,9 +111,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": "No file or url given"})
             return
 
-        with state_lock:
-            poll_counts[appkey] = 0
-        self._send(201, app_payload(appkey, "PROCESSING"))
+        # Re-uploading restarts the metadata extraction for that key.
+        GETS.pop(appkey, None)
+
+        # The live API answers an upload with the identifier and nothing else.
+        self._send(201, {"app_url": "tb://%s" % appkey})
 
     def do_GET(self):
         self._drain_body()
@@ -102,11 +129,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         appkey = m.group(1)
-        with state_lock:
-            count = poll_counts.get(appkey, POLLS_BEFORE_READY) + 1
-            poll_counts[appkey] = count
-        state = "READY" if count > POLLS_BEFORE_READY else "PROCESSING"
-        self._send(200, app_payload(appkey, state))
+        GETS[appkey] = GETS.get(appkey, 0) + 1
+        self._send(200, app_payload(appkey))
 
 
 if __name__ == "__main__":

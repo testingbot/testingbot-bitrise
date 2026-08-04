@@ -76,3 +76,22 @@ build machine a second time:
     - testingbot_secret: $TESTINGBOT_SECRET
     - app_url: https://example.com/builds/app-debug.apk
 ```
+
+### Don't wait for the version and icon
+
+TestingBot reads the app's version, minimum OS version and icon out of the
+binary in the background, and the Step waits for that to finish so
+`$TESTINGBOT_APP_VERSION` is trustworthy. If you only need the identifier,
+skip the wait:
+
+```yaml
+- testingbot-upload-app:
+    inputs:
+    - testingbot_key: $TESTINGBOT_KEY
+    - testingbot_secret: $TESTINGBOT_SECRET
+    - wait_for_processing: "false"
+```
+
+`$TESTINGBOT_APP_URL` is ready to test with immediately either way;
+`$TESTINGBOT_APP_STATE` tells you whether the rest of the metadata had landed
+(`DONE`) or not yet (`PROCESSING`).

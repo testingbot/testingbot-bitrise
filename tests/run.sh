@@ -100,8 +100,12 @@ reset_env() {
   export testingbot_key="test-key"
   export testingbot_secret="test-secret"
   export wait_for_processing="true"
-  export processing_timeout="60"
+  export processing_timeout="300"
 }
+
+# Poll every second rather than the production 3, so the waiting tests below
+# cost a second or two instead of ten.
+export TB_POLL_INTERVAL=1
 
 # --- stubs -------------------------------------------------------------------
 #
@@ -121,17 +125,20 @@ head -c 2048 /dev/urandom >"$FIXTURE_APK"
 echo
 echo "testingbot-upload-app"
 
-# 1. Happy path: explicit app path, polls until READY.
+# 1. Happy path: explicit app path.
 reset_env
 export apk_ipa_filepath="$FIXTURE_APK"
 run_step testingbot-upload-app
 assert_status "uploads an app and exits 0" "$STATUS" 0
 assert_contains "exports the tb:// identifier" "$OUTPUT" "TESTINGBOT_APP_URL=tb://"
-assert_contains "waits for processing to finish" "$OUTPUT" "state: PROCESSING"
-assert_contains "reports the app as ready" "$OUTPUT" "App is ready."
-assert_contains "exports the app state" "$OUTPUT" "TESTINGBOT_APP_STATE=READY"
-assert_contains "exports metadata read after processing" "$OUTPUT" "TESTINGBOT_APP_VERSION=1.4.2"
-assert_contains "exports the app type" "$OUTPUT" "TESTINGBOT_APP_TYPE=apk"
+assert_contains "reads the app back after uploading" "$OUTPUT" "Reading the stored app"
+# The upload POST returns only app_url, so id/version/platform must come from
+# the follow-up GET -- exactly what broke against the live API first time.
+assert_contains "exports the id from the metadata call" "$OUTPUT" "TESTINGBOT_APP_ID=12345"
+assert_contains "exports the version" "$OUTPUT" "TESTINGBOT_APP_VERSION=1.4.2"
+assert_contains "exports the detected platform" "$OUTPUT" "TESTINGBOT_APP_TYPE=ANDROID"
+assert_contains "exports the metadata state" "$OUTPUT" "TESTINGBOT_APP_STATE=DONE"
+assert_contains "exports a download URL" "$OUTPUT" "TESTINGBOT_APP_DOWNLOAD_URL=https://"
 
 # 2. Auto-detection from the preceding build Step.
 reset_env
@@ -162,30 +169,66 @@ run_step testingbot-upload-app
 assert_status "uploads from a public URL" "$STATUS" 0
 assert_contains "reports the source URL" "$OUTPUT" "https://example.com/app.apk"
 
-# 6. wait_for_processing disabled short-circuits the poll loop.
+# 6. Metadata extraction runs asynchronously: the Step must wait for state DONE
+#    rather than reporting the null version it sees on the first GET.
 reset_env
 export apk_ipa_filepath="$FIXTURE_APK"
+export app_key="slowmeta-app"
+run_step testingbot-upload-app
+assert_status "waits out PROCESSING and exits 0" "$STATUS" 0
+assert_contains "says it is waiting" "$OUTPUT" "waiting for state DONE"
+assert_contains "reports how long it waited" "$OUTPUT" "Metadata ready after"
+assert_contains "ends up DONE" "$OUTPUT" "TESTINGBOT_APP_STATE=DONE"
+# The whole point of waiting: the version is absent on the early GETs.
+assert_contains "exports the version the wait uncovered" "$OUTPUT" "TESTINGBOT_APP_VERSION=1.4.2"
+
+# 7. Waiting is optional. Without it the Step returns immediately with whatever
+#    the API has so far, and says so through TESTINGBOT_APP_STATE.
+reset_env
+export apk_ipa_filepath="$FIXTURE_APK"
+export app_key="slowmeta-nowait"
 export wait_for_processing="false"
 run_step testingbot-upload-app
-assert_status "skips polling when wait_for_processing is false" "$STATUS" 0
-assert_not_contains "does not poll" "$OUTPUT" "App is ready."
+assert_status "skips the wait when asked" "$STATUS" 0
+assert_not_contains "does not wait" "$OUTPUT" "waiting for state DONE"
+assert_contains "reports the unfinished state" "$OUTPUT" "TESTINGBOT_APP_STATE=PROCESSING"
 assert_contains "still exports the identifier" "$OUTPUT" "TESTINGBOT_APP_URL=tb://"
 
-# 7. No app anywhere -> named error, not a curl error.
+# 8. Metadata that never finishes must not fail an upload that succeeded -- the
+#    binary is stored and testable either way.
+reset_env
+export apk_ipa_filepath="$FIXTURE_APK"
+export app_key="stuckmeta-app"
+export processing_timeout="2"
+run_step testingbot-upload-app
+assert_status "a metadata timeout does not fail the Step" "$STATUS" 0
+assert_contains "warns that it gave up" "$OUTPUT" "Still PROCESSING after 2s"
+assert_contains "reports the state it gave up in" "$OUTPUT" "TESTINGBOT_APP_STATE=PROCESSING"
+assert_contains "still exports the identifier" "$OUTPUT" "TESTINGBOT_APP_URL=tb://stuckmeta-app"
+
+# 9. A non-numeric timeout falls back to the default instead of erroring out.
+reset_env
+export apk_ipa_filepath="$FIXTURE_APK"
+export processing_timeout="not-a-number"
+run_step testingbot-upload-app
+assert_status "survives a bad processing_timeout" "$STATUS" 0
+assert_contains "warns about the bad value" "$OUTPUT" "is not a number"
+
+# 10. No app anywhere -> named error, not a curl error.
 reset_env
 run_step testingbot-upload-app
 assert_status "fails when there is no app to upload" "$STATUS" 1
 assert_contains "explains which Step produces the artifact" "$OUTPUT" "Could not find the app binary"
 assert_contains "names the build Step to add" "$OUTPUT" "BITRISE_APK_PATH"
 
-# 8. Explicit path that does not exist.
+# 11. Explicit path that does not exist.
 reset_env
 export apk_ipa_filepath="${WORK}/nope.apk"
 run_step testingbot-upload-app
 assert_status "fails when the given path is missing" "$STATUS" 1
 assert_contains "reports the path it looked for" "$OUTPUT" "nope.apk"
 
-# 9. Bad credentials -> the named auth error, not raw JSON.
+# 12. Bad credentials -> the named auth error, not raw JSON.
 reset_env
 export apk_ipa_filepath="$FIXTURE_APK"
 export testingbot_secret="wrong"
@@ -194,14 +237,14 @@ assert_status "fails on bad credentials" "$STATUS" 1
 assert_contains "maps HTTP 401 to a readable message" "$OUTPUT" "rejected the credentials"
 assert_contains "points at the member area" "$OUTPUT" "testingbot.com/members/user/api"
 
-# 10. Read-only account -> the named 403 error.
+# 13. Read-only account -> the named 403 error.
 reset_env
 export app_url="https://example.com/readonly.apk"
 run_step testingbot-upload-app
 assert_status "fails on a read-only account" "$STATUS" 1
 assert_contains "maps HTTP 403 to a readable message" "$OUTPUT" "read-only"
 
-# 11. Empty credentials are caught before any network call.
+# 14. Empty credentials are caught before any network call.
 reset_env
 export testingbot_key=""
 export apk_ipa_filepath="$FIXTURE_APK"
@@ -209,13 +252,13 @@ run_step testingbot-upload-app
 assert_status "fails when the key input is empty" "$STATUS" 1
 assert_contains "names the empty input" "$OUTPUT" "testingbot_key"
 
-# 12. Processing timeout is reported as such.
+# 15. An unreachable API is a real failure -- the upload never happened.
 reset_env
 export apk_ipa_filepath="$FIXTURE_APK"
-export processing_timeout="1"
+export TB_API_BASE="http://127.0.0.1:1/v1"
 run_step testingbot-upload-app
-assert_status "fails when processing takes too long" "$STATUS" 1
-assert_contains "suggests raising the timeout" "$OUTPUT" "processing_timeout"
+export TB_API_BASE="http://127.0.0.1:${MOCK_PORT}/v1"
+assert_status "an unreachable API still fails the upload itself" "$STATUS" 1
 
 # --- testingbot-espresso -----------------------------------------------------
 #
@@ -670,6 +713,29 @@ export BITRISE_TEST_BUNDLE_PATH="$BUNDLE_DIR"
 run_step testingbot-xcuitest
 assert_status "auto-detects the IPA and test bundle" "$STATUS" 0
 
+# 5b. A simulator build is a `.app` DIRECTORY, which is what
+#     $BITRISE_APP_DIR_PATH holds and what `real_device: false` implies. The
+#     uploader only accepts zip-format archives, so the Step has to zip it --
+#     passing the directory through fails against the real CLI.
+reset_xcuitest_env
+SIM_APP_DIR="${WORK}/Example.app"
+mkdir -p "$SIM_APP_DIR"
+: >"${SIM_APP_DIR}/Example"
+export BITRISE_APP_DIR_PATH="$SIM_APP_DIR"
+export BITRISE_TEST_BUNDLE_PATH="$BUNDLE_DIR"
+run_step testingbot-xcuitest
+assert_status "accepts a .app directory" "$STATUS" 0
+assert_contains "zips the app bundle" "$OUTPUT" "Packaging the app bundle"
+# The app is the first positional after the subcommand; it must be the zip.
+assert_contains "hands the CLI a zip, not a directory" \
+  "$(awk '/^xcuitest$/ {getline; print; exit}' "$STUB_ARGV_FILE")" "Example.app.zip"
+
+# 5c. An .ipa is already an archive and must not be touched.
+reset_xcuitest_env
+export app_path="$APP_IPA" test_app_path="$BUNDLE_DIR"
+run_step testingbot-xcuitest
+assert_not_contains "does not re-zip an .ipa" "$OUTPUT" "Packaging the app bundle"
+
 # 6. A failing suite fails the build.
 reset_xcuitest_env
 export app_path="$APP_IPA" test_app_path="$BUNDLE_DIR"
@@ -706,8 +772,12 @@ echo "testingbot-tunnel"
 
 TUNNEL_ARCHIVE_DIR="${WORK}/tunnel-dist"
 mkdir -p "${TUNNEL_ARCHIVE_DIR}/pkg"
-echo "not really a jar" >"${TUNNEL_ARCHIVE_DIR}/pkg/testingbot-tunnel.jar"
-(cd "${TUNNEL_ARCHIVE_DIR}/pkg" && zip -qry "${TUNNEL_ARCHIVE_DIR}/testingbot-tunnel.zip" "testingbot-tunnel.jar")
+# The real archive names the jar after the release -- testingbot-tunnel-4.8.jar
+# -- even though the download URL is unversioned, so the name moves with every
+# tunnel release. The fixture used to be `testingbot-tunnel.jar`, which is what
+# let the Step ship a find(1) for a name that never actually exists.
+echo "not really a jar" >"${TUNNEL_ARCHIVE_DIR}/pkg/testingbot-tunnel-4.8.jar"
+(cd "${TUNNEL_ARCHIVE_DIR}/pkg" && zip -qry "${TUNNEL_ARCHIVE_DIR}/testingbot-tunnel.zip" "testingbot-tunnel-4.8.jar")
 TUNNEL_ARCHIVE="${TUNNEL_ARCHIVE_DIR}/testingbot-tunnel.zip"
 TUNNEL_SHA="$(shasum -a 256 "$TUNNEL_ARCHIVE" | awk '{print $1}')"
 
@@ -744,7 +814,7 @@ reset_tunnel_env
 run_step testingbot-tunnel
 assert_status "starts the tunnel" "$STATUS" 0
 assert_contains "downloads the tunnel" "$OUTPUT" "Downloading the TestingBot Tunnel"
-assert_contains "unpacks the jar" "$OUTPUT" "testingbot-tunnel.jar"
+assert_contains "unpacks the version-suffixed jar" "$OUTPUT" "testingbot-tunnel-4.8.jar"
 assert_contains "waits for readiness" "$OUTPUT" "Tunnel ready after"
 assert_contains "exports the identifier" "$OUTPUT" "TESTINGBOT_TUNNEL_IDENTIFIER=bitrise-test-"
 assert_contains "warns about the stop Step" "$OUTPUT" "TestingBot Tunnel Stop"
@@ -823,6 +893,31 @@ export download_url="file://${WORK}/no-such-archive.zip"
 run_step testingbot-tunnel
 assert_status "fails on an unreachable download" "$STATUS" 1
 assert_contains "names the URL it tried" "$OUTPUT" "no-such-archive.zip"
+
+# 8. An archive with no jar in it fails with a named error rather than trying
+#    to run `java -jar ""`.
+reset_tunnel_env
+NO_JAR_DIR="${WORK}/tunnel-nojar"
+mkdir -p "${NO_JAR_DIR}/pkg"
+echo "changelog" >"${NO_JAR_DIR}/pkg/CHANGELOG"
+(cd "${NO_JAR_DIR}/pkg" && zip -qry "${NO_JAR_DIR}/testingbot-tunnel.zip" "CHANGELOG")
+export download_url="file://${NO_JAR_DIR}/testingbot-tunnel.zip"
+run_step testingbot-tunnel
+assert_status "fails when the archive has no jar" "$STATUS" 1
+assert_contains "says the jar is missing" "$OUTPUT" "did not contain a testingbot-tunnel jar"
+
+# 9. Any future rename that keeps the prefix still resolves.
+reset_tunnel_env
+NEXT_DIR="${WORK}/tunnel-next"
+mkdir -p "${NEXT_DIR}/pkg"
+echo "not really a jar" >"${NEXT_DIR}/pkg/testingbot-tunnel-5.0.1.jar"
+(cd "${NEXT_DIR}/pkg" && zip -qry "${NEXT_DIR}/testingbot-tunnel.zip" "testingbot-tunnel-5.0.1.jar")
+export download_url="file://${NEXT_DIR}/testingbot-tunnel.zip"
+run_step testingbot-tunnel
+assert_status "handles a future tunnel version" "$STATUS" 0
+assert_contains "finds the renamed jar" "$OUTPUT" "testingbot-tunnel-5.0.1.jar"
+TESTINGBOT_TUNNEL_PID_VALUE="$(pid_from_output)"
+stop_tunnel_if_running
 
 echo
 echo "testingbot-tunnel-stop"

@@ -148,16 +148,20 @@ inputs:
     summary: iOS version, for example `17.2` or `18.0`.
     is_expand: true
 
-- real_device: "false"
+- real_device: "true"
   opts:
     category: Device
     title: Use a real device
-    summary: Run on a physical device rather than a simulator.
+    summary: Run on a physical device. TestingBot runs XCUITest on real devices only.
     description: |-
-      Run on a physical device. Simulators are faster and cheaper for most
-      suites; real devices matter for hardware-dependent behaviour.
+      Run on a physical device.
 
-      A real-device run needs an IPA built for a device destination.
+      TestingBot runs XCUITest on **real devices only**, so leave this on.
+      Turning it off makes the run wait for a result that never arrives.
+
+      Build the app and the test bundle for a device destination —
+      `generic/platform=iOS`, not `iOS Simulator`. A simulator build is
+      rejected by the device.
     value_options:
     - "true"
     - "false"
@@ -207,11 +211,17 @@ inputs:
     summary: Device time zone, for example `Europe/Brussels`.
     is_expand: true
 
-- build_name: $BITRISE_APP_TITLE - $BITRISE_BUILD_NUMBER
+- build_name:
   opts:
     category: Test configuration
     title: Build name
     summary: Groups this run with others in the TestingBot dashboard.
+    description: |-
+      Identifier used to group the test sessions of one build together in the
+      TestingBot dashboard.
+
+      Leave empty to name the build after the Bitrise app title and build
+      number, for example `My App #42`.
     is_expand: true
 
 - test_name: XCUITest

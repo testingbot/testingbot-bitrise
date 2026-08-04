@@ -31,6 +31,10 @@ set -eo pipefail
 
 TB_API_BASE="${TB_API_BASE:-https://api.testingbot.com/v1}"
 
+# Seconds between polls when a Step waits on the API. Overridable so the offline
+# suite doesn't have to sleep through real intervals.
+TB_POLL_INTERVAL="${TB_POLL_INTERVAL:-3}"
+
 # --- logging -----------------------------------------------------------------
 # Bitrise renders ANSI colours in the build log.
 
@@ -151,9 +155,6 @@ Java is required to run the TestingBot Tunnel but was not found on the PATH.
 The tunnel needs Java 11 or newer. Add an `Install Java` Step before this one,
 or pick a Stack that ships a JDK.
 EOF
-    ;;
-  UPLOAD_TIMEOUT)
-    echo "Timed out waiting for TestingBot to finish processing the uploaded app."
     ;;
   *)
     echo "$1"
@@ -452,6 +453,10 @@ tb_redact() {
 #   $BITRISE_TEST_RESULT_DIR/<test-name>/test-info.json   {"test-name": "..."}
 # `Deploy to Bitrise.io` then picks it up. This is the same contract the
 # `custom-test-results-export` Step implements.
+#
+# Note that Bitrise hands every Step its *own* $BITRISE_TEST_RESULT_DIR --
+# .../test_results<build>/step_test_result<step> -- so a later Step cannot see
+# what this one wrote. `Deploy to Bitrise.io` collects the shared parent.
 tb_export_test_report() {
   local test_name="$1" junit_path="$2" export_dir
 
@@ -489,7 +494,7 @@ tb_require_java() {
 }
 
 # tb_download_tunnel <url> <dest-dir> <sha256-or-empty>
-# Echoes the path to testingbot-tunnel.jar.
+# Echoes the path to the tunnel jar.
 tb_download_tunnel() {
   local url="$1" dest="$2" expected="$3" archive jar actual
 
@@ -520,8 +525,12 @@ actual:   ${actual}"
   (cd "$dest" && unzip -qo "testingbot-tunnel.zip") >&2 ||
     tb_fail "Could not unpack the TestingBot Tunnel archive."
 
-  jar="$(find "$dest" -name 'testingbot-tunnel.jar' -type f 2>/dev/null | head -1)"
-  [ -n "$jar" ] || tb_fail "The tunnel archive did not contain testingbot-tunnel.jar."
+  # The archive carries the version in the jar's name -- testingbot-tunnel-4.8.jar
+  # -- while the download URL is unversioned, so the name changes with every
+  # tunnel release. Match on the prefix rather than an exact name, and sort so
+  # the pick is deterministic if a download directory is reused across versions.
+  jar="$(find "$dest" -name 'testingbot-tunnel*.jar' -type f 2>/dev/null | sort | tail -1)"
+  [ -n "$jar" ] || tb_fail "The tunnel archive did not contain a testingbot-tunnel jar."
 
   tb_done "Unpacked $jar" >&2
   echo "$jar"
@@ -580,6 +589,37 @@ tb_dump_tunnel_log() {
   else
     tb_warn "No tunnel log at $1"
   fi
+}
+
+# --- app bundles -------------------------------------------------------------
+
+# tb_prepare_app_bundle <path>
+#
+# TestingBot's uploader only accepts zip-based archives -- it checks for the
+# `PK\x03\x04` magic bytes and rejects anything else -- but an iOS Simulator
+# build is a `.app` *directory*, which is exactly what Bitrise's
+# `Xcode Build for Simulator` Step puts in $BITRISE_APP_DIR_PATH. Zip it.
+#
+# Echoes the path to use; progress goes to stderr so it stays out of the
+# captured value.
+tb_prepare_app_bundle() {
+  local given="$1" zipped
+
+  # Anything that is already a file (.apk/.aab/.ipa/.zip) is handed straight on.
+  [ -d "$given" ] || {
+    echo "$given"
+    return 0
+  }
+
+  tb_section "Packaging the app bundle" >&2
+  tb_info "Bundle: $given" >&2
+
+  zipped="${TMPDIR:-/tmp}/$(basename "$given").zip"
+  rm -f "$zipped"
+  (cd "$(dirname "$given")" && zip -qry "$zipped" "$(basename "$given")") >&2
+
+  tb_done "Zipped to $zipped" >&2
+  echo "$zipped"
 }
 
 # --- iOS test bundles --------------------------------------------------------
@@ -657,7 +697,13 @@ tb_require testingbot_secret "$testingbot_secret"
 tb_export_credentials "$testingbot_key" "$testingbot_secret"
 
 wait_for_processing="$(tb_bool "${wait_for_processing:-true}")"
-processing_timeout="${processing_timeout:-300}"
+
+case "${processing_timeout:-}" in
+'' | *[!0-9]*)
+  tb_warn "\`processing_timeout\` is not a number (${processing_timeout:-empty}); using 300."
+  processing_timeout=300
+  ;;
+esac
 
 # --- work out what we are uploading ------------------------------------------
 
@@ -686,14 +732,7 @@ else
   tb_assert_exists "$local_app_path" APP_FILE_MISSING
 
   # A .app is a directory; TestingBot wants it zipped.
-  if [ -d "$local_app_path" ]; then
-    tb_section "Zipping app bundle"
-    zipped="${TMPDIR:-/tmp}/$(basename "$local_app_path").zip"
-    rm -f "$zipped"
-    (cd "$(dirname "$local_app_path")" && zip -qry "$zipped" "$(basename "$local_app_path")")
-    tb_info "Zipped $local_app_path -> $zipped"
-    local_app_path="$zipped"
-  fi
+  local_app_path="$(tb_prepare_app_bundle "$local_app_path")"
 
   tb_section "Uploading to TestingBot"
   tb_info "App: $local_app_path ($(du -h "$local_app_path" | cut -f1 | tr -d ' '))"
@@ -706,13 +745,11 @@ fi
 tb_check_status
 
 # --- read the response -------------------------------------------------------
+#
+# The upload is synchronous, and the POST returns only `app_url`. Everything
+# else comes from a follow-up GET.
 
 app_identifier="$(tb_json_get 'app_url')"
-app_id="$(tb_json_get 'id')"
-app_state="$(tb_json_get 'state')"
-app_version="$(tb_json_get 'version')"
-app_type="$(tb_json_get 'type')"
-app_download_url="$(tb_json_get 'url')"
 
 if [ -z "$app_identifier" ]; then
   tb_fail "TestingBot accepted the upload but returned no app URL." \
@@ -721,37 +758,77 @@ fi
 
 tb_done "Uploaded: ${app_identifier}"
 
-# --- wait for processing -----------------------------------------------------
+# --- metadata ----------------------------------------------------------------
+#
+# The upload POST answers with the identifier and nothing else, so id, platform,
+# version and download URL come from GET /storage/<appkey>. TestingBot extracts
+# that metadata asynchronously: `state` is PROCESSING immediately after the
+# upload and DONE once `version`, `min_device_version` and the icon are filled
+# in. Without waiting for DONE, a Step reading `version` straight afterwards
+# can't tell "not extracted yet" from "the binary has no version".
+#
+# None of this may fail the Step. The binary is stored and testable the moment
+# the POST returns; the metadata is a convenience on top of that.
 
-if [ "$wait_for_processing" = "true" ] && [ "$app_state" != "READY" ]; then
-  tb_section "Waiting for TestingBot to finish processing the app"
+app_id=""
+app_version=""
+app_type=""
+app_state=""
+app_download_url=""
 
-  appkey="${app_identifier#tb://}"
-  waited=0
-  interval=5
+appkey="${app_identifier#tb://}"
+meta_file="${TMPDIR:-/tmp}/tb-meta-$$.json"
 
-  while [ "$app_state" != "READY" ]; do
-    if [ "$waited" -ge "$processing_timeout" ]; then
-      tb_fail UPLOAD_TIMEOUT \
-        "Still in state '${app_state}' after ${processing_timeout}s. Raise \`processing_timeout\`, or set \`wait_for_processing\` to false."
+# read_stored_app -- read the stored app into $TB_RESPONSE_BODY. Returns non-zero
+# rather than failing the Step when the call doesn't come back 2xx.
+read_stored_app() {
+  curl --silent --show-error --fail \
+    --retry 2 --retry-delay 2 --connect-timeout 15 \
+    --user "${testingbot_key}:${testingbot_secret}" \
+    --output "$meta_file" \
+    "${TB_API_BASE}/storage/${appkey}" || return 1
+  TB_RESPONSE_BODY="$(cat "$meta_file")"
+  rm -f "$meta_file"
+}
+
+tb_section "Reading the stored app"
+
+if read_stored_app; then
+  app_state="$(tb_json_get 'state')"
+
+  if [ "$wait_for_processing" = "true" ] && [ "$app_state" = "PROCESSING" ]; then
+    tb_info "TestingBot is still extracting metadata -- waiting for state DONE."
+    waited=0
+    while [ "$app_state" = "PROCESSING" ]; do
+      if [ "$waited" -ge "$processing_timeout" ]; then
+        tb_warn "Still PROCESSING after ${processing_timeout}s -- continuing anyway."
+        tb_warn "The app is uploaded and usable; only its version, minimum OS"
+        tb_warn "version and icon may still be missing. Raise \`processing_timeout\`"
+        tb_warn "if this keeps happening, and check \$TESTINGBOT_APP_STATE."
+        break
+      fi
+      sleep "$TB_POLL_INTERVAL"
+      waited=$((waited + TB_POLL_INTERVAL))
+      read_stored_app || break
+      app_state="$(tb_json_get 'state')"
+    done
+    if [ "$app_state" = "DONE" ]; then
+      tb_done "Metadata ready after ${waited}s."
     fi
+  fi
 
-    sleep "$interval"
-    waited=$((waited + interval))
+  app_id="$(tb_json_get 'id')"
+  app_version="$(tb_json_get 'version')"
+  app_type="$(tb_json_get 'type')"
+  app_download_url="$(tb_json_get 'url')"
 
-    tb_api_call --request GET "${TB_API_BASE}/storage/${appkey}" \
-      --user "${testingbot_key}:${testingbot_secret}"
-    tb_check_status
-
-    app_state="$(tb_json_get 'state')"
-    # Metadata is only complete once processing finishes.
-    app_version="$(tb_json_get 'version')"
-    app_type="$(tb_json_get 'type')"
-    app_download_url="$(tb_json_get 'url')"
-    tb_info "  state: ${app_state} (${waited}s)"
-  done
-
-  tb_done "App is ready."
+  tb_info "  id:       ${app_id:-unknown}"
+  tb_info "  platform: ${app_type:-unknown}"
+  tb_info "  version:  ${app_version:-not reported}"
+  tb_info "  state:    ${app_state:-unknown}"
+else
+  rm -f "$meta_file"
+  tb_warn "Could not read the app back; the upload itself succeeded."
 fi
 
 # --- outputs -----------------------------------------------------------------
@@ -759,9 +836,9 @@ fi
 tb_section "Exporting outputs"
 tb_export TESTINGBOT_APP_URL "$app_identifier"
 tb_export TESTINGBOT_APP_ID "$app_id"
-tb_export TESTINGBOT_APP_STATE "$app_state"
 tb_export TESTINGBOT_APP_VERSION "$app_version"
 tb_export TESTINGBOT_APP_TYPE "$app_type"
+tb_export TESTINGBOT_APP_STATE "$app_state"
 tb_export TESTINGBOT_APP_DOWNLOAD_URL "$app_download_url"
 
 echo

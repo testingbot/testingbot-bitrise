@@ -176,7 +176,7 @@ If you build the zip yourself, hand it over directly:
 | `locale` | Device locale, for example `US` or `DE`. |  |  |
 | `language` | App language as an ISO 639-1 code, for example `en` or `de`. |  |  |
 | `timezone` | Device time zone, for example `Europe/Brussels`. |  |  |
-| `build_name` | Groups this run with others in the TestingBot dashboard. |  | `$BITRISE_APP_TITLE - $BITRISE_BUILD_NUMBER` |
+| `build_name` | Identifier used to group the test sessions of one build together in the TestingBot dashboard.  Leave empty to name the build after the Bitrise app title and build number, for example `My App #42`. |  |  |
 | `test_name` | Shown in the TestingBot dashboard, and used as the tab name on Bitrise's Test Reports page. Give parallel Steps distinct names so their reports don't collide. | required | `XCUITest` |
 | `fail_on_test_failure` | When enabled (the default) a failing test fails the Step, and so the build.  Turn it off for a report-only run — the Step then succeeds regardless, and you can branch on the exported `$TESTINGBOT_TEST_STATUS`. | required | `true` |
 | `run_async` | Start the run and return without waiting for it to finish.  Nothing is polled, no report is downloaded, and the Step cannot fail on a test failure — check the TestingBot dashboard instead. |  | `false` |

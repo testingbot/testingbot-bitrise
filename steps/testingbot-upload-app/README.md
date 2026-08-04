@@ -8,8 +8,8 @@ Uploads an Android or iOS app to TestingBot storage and exports its tb:// app UR
 <summary>Description</summary>
 
 Uploads your app (`.apk`, `.aab`, `.ipa`, `.app`, `.zip`) to [TestingBot](https://testingbot.com)
-storage, waits until TestingBot has finished processing it, and exports the
-resulting `tb://` identifier so later Steps and your Appium tests can use it.
+storage and exports the resulting `tb://` identifier, so later Steps and your
+Appium tests can use it straight away.
 
 If you don't set an app path, the Step picks up the artifact of the preceding
 build Step automatically (`$BITRISE_APK_PATH`, `$BITRISE_AAB_PATH`,
@@ -133,6 +133,25 @@ build machine a second time:
     - app_url: https://example.com/builds/app-debug.apk
 ```
 
+### Don't wait for the version and icon
+
+TestingBot reads the app's version, minimum OS version and icon out of the
+binary in the background, and the Step waits for that to finish so
+`$TESTINGBOT_APP_VERSION` is trustworthy. If you only need the identifier,
+skip the wait:
+
+```yaml
+- testingbot-upload-app:
+    inputs:
+    - testingbot_key: $TESTINGBOT_KEY
+    - testingbot_secret: $TESTINGBOT_SECRET
+    - wait_for_processing: "false"
+```
+
+`$TESTINGBOT_APP_URL` is ready to test with immediately either way;
+`$TESTINGBOT_APP_STATE` tells you whether the rest of the metadata had landed
+(`DONE`) or not yet (`PROCESSING`).
+
 
 ## ⚙️ Configuration
 
@@ -146,8 +165,8 @@ build machine a second time:
 | `apk_ipa_filepath` | Local path to the app binary (`.apk`, `.aab`, `.ipa`, `.app`, `.zip`).  Leave empty to use the artifact produced by the preceding build Step. The Step looks at, in order:  - `$BITRISE_APK_PATH` - `$BITRISE_AAB_PATH` - `$BITRISE_IPA_PATH` - `$BITRISE_APP_DIR_PATH` |  |  |
 | `app_url` | A public `https://` URL that TestingBot downloads the binary from, instead of this Step uploading a local file.  Useful when the artifact already lives somewhere reachable — it saves pushing the binary out of the build machine a second time. Takes precedence over `apk_ipa_filepath`. |  |  |
 | `app_key` | When set, the app is stored under this name and the exported identifier is always `tb://<app_key>`, no matter how often you re-upload.  That lets you hard-code the `appium:app` capability in your test code once. Leave empty to get a new identifier per upload. |  |  |
-| `wait_for_processing` | TestingBot processes an upload asynchronously (`PROCESSING` -> `READY`). With this enabled the Step waits for `READY`, so a test Step that runs straight afterwards can't race the upload. | required | `true` |
-| `processing_timeout` | Maximum number of seconds to wait for the upload to reach the `READY` state before failing the Step. Only used when `wait_for_processing` is enabled. | required | `300` |
+| `wait_for_processing` | TestingBot extracts an uploaded app's version, minimum OS version and icon in the background. The stored app reports `state: PROCESSING` until that finishes, then `state: DONE`.  With this enabled the Step polls until the state is `DONE`, so `$TESTINGBOT_APP_VERSION` is either the real version or a genuine absence — not just "not extracted yet".  Turn it off if you only need `$TESTINGBOT_APP_URL` and don't want to wait. The identifier is usable for testing either way; check `$TESTINGBOT_APP_STATE` to see which you got. | required | `true` |
+| `processing_timeout` | How long to wait for `state` to become `DONE`, in seconds. Extraction normally takes a few seconds.  Running out of time is **not** a Step failure — the app is uploaded and testable regardless. The Step warns, exports `$TESTINGBOT_APP_STATE=PROCESSING` and carries on.  Only used when `wait_for_processing` is enabled. | required | `300` |
 </details>
 
 <details>
@@ -157,9 +176,9 @@ build machine a second time:
 | --- | --- |
 | `TESTINGBOT_APP_URL` | The `tb://...` identifier of the uploaded app. Pass it as the `appium:app` capability, or to one of the TestingBot App Automate Steps. |
 | `TESTINGBOT_APP_ID` | The numeric storage ID of the uploaded app. |
-| `TESTINGBOT_APP_STATE` | `READY` or `PROCESSING` at the time the Step finished. |
 | `TESTINGBOT_APP_VERSION` | The `versionName` (Android) or `CFBundleShortVersionString` (iOS) that TestingBot extracted from the uploaded binary. |
-| `TESTINGBOT_APP_TYPE` | `apk`, `ipa` or `zip`. |
+| `TESTINGBOT_APP_TYPE` | The platform TestingBot detected, for example `ANDROID` or `IOS`. |
+| `TESTINGBOT_APP_STATE` | `DONE` once TestingBot has extracted the app's version, minimum OS version and icon; `PROCESSING` while that is still running.  This is only ever `PROCESSING` when `wait_for_processing` is off or its timeout ran out. The app is uploaded and testable in either case. |
 | `TESTINGBOT_APP_DOWNLOAD_URL` | Signed URL to download the stored binary again. |
 </details>
 

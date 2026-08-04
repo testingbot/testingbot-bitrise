@@ -18,6 +18,10 @@
 
 TB_API_BASE="${TB_API_BASE:-https://api.testingbot.com/v1}"
 
+# Seconds between polls when a Step waits on the API. Overridable so the offline
+# suite doesn't have to sleep through real intervals.
+TB_POLL_INTERVAL="${TB_POLL_INTERVAL:-3}"
+
 # --- logging -----------------------------------------------------------------
 # Bitrise renders ANSI colours in the build log.
 
@@ -138,9 +142,6 @@ Java is required to run the TestingBot Tunnel but was not found on the PATH.
 The tunnel needs Java 11 or newer. Add an `Install Java` Step before this one,
 or pick a Stack that ships a JDK.
 EOF
-    ;;
-  UPLOAD_TIMEOUT)
-    echo "Timed out waiting for TestingBot to finish processing the uploaded app."
     ;;
   *)
     echo "$1"
@@ -439,6 +440,10 @@ tb_redact() {
 #   $BITRISE_TEST_RESULT_DIR/<test-name>/test-info.json   {"test-name": "..."}
 # `Deploy to Bitrise.io` then picks it up. This is the same contract the
 # `custom-test-results-export` Step implements.
+#
+# Note that Bitrise hands every Step its *own* $BITRISE_TEST_RESULT_DIR --
+# .../test_results<build>/step_test_result<step> -- so a later Step cannot see
+# what this one wrote. `Deploy to Bitrise.io` collects the shared parent.
 tb_export_test_report() {
   local test_name="$1" junit_path="$2" export_dir
 
@@ -476,7 +481,7 @@ tb_require_java() {
 }
 
 # tb_download_tunnel <url> <dest-dir> <sha256-or-empty>
-# Echoes the path to testingbot-tunnel.jar.
+# Echoes the path to the tunnel jar.
 tb_download_tunnel() {
   local url="$1" dest="$2" expected="$3" archive jar actual
 
@@ -507,8 +512,12 @@ actual:   ${actual}"
   (cd "$dest" && unzip -qo "testingbot-tunnel.zip") >&2 ||
     tb_fail "Could not unpack the TestingBot Tunnel archive."
 
-  jar="$(find "$dest" -name 'testingbot-tunnel.jar' -type f 2>/dev/null | head -1)"
-  [ -n "$jar" ] || tb_fail "The tunnel archive did not contain testingbot-tunnel.jar."
+  # The archive carries the version in the jar's name -- testingbot-tunnel-4.8.jar
+  # -- while the download URL is unversioned, so the name changes with every
+  # tunnel release. Match on the prefix rather than an exact name, and sort so
+  # the pick is deterministic if a download directory is reused across versions.
+  jar="$(find "$dest" -name 'testingbot-tunnel*.jar' -type f 2>/dev/null | sort | tail -1)"
+  [ -n "$jar" ] || tb_fail "The tunnel archive did not contain a testingbot-tunnel jar."
 
   tb_done "Unpacked $jar" >&2
   echo "$jar"
@@ -567,6 +576,37 @@ tb_dump_tunnel_log() {
   else
     tb_warn "No tunnel log at $1"
   fi
+}
+
+# --- app bundles -------------------------------------------------------------
+
+# tb_prepare_app_bundle <path>
+#
+# TestingBot's uploader only accepts zip-based archives -- it checks for the
+# `PK\x03\x04` magic bytes and rejects anything else -- but an iOS Simulator
+# build is a `.app` *directory*, which is exactly what Bitrise's
+# `Xcode Build for Simulator` Step puts in $BITRISE_APP_DIR_PATH. Zip it.
+#
+# Echoes the path to use; progress goes to stderr so it stays out of the
+# captured value.
+tb_prepare_app_bundle() {
+  local given="$1" zipped
+
+  # Anything that is already a file (.apk/.aab/.ipa/.zip) is handed straight on.
+  [ -d "$given" ] || {
+    echo "$given"
+    return 0
+  }
+
+  tb_section "Packaging the app bundle" >&2
+  tb_info "Bundle: $given" >&2
+
+  zipped="${TMPDIR:-/tmp}/$(basename "$given").zip"
+  rm -f "$zipped"
+  (cd "$(dirname "$given")" && zip -qry "$zipped" "$(basename "$given")") >&2
+
+  tb_done "Zipped to $zipped" >&2
+  echo "$zipped"
 }
 
 # --- iOS test bundles --------------------------------------------------------

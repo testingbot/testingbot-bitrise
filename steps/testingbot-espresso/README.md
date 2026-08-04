@@ -201,7 +201,7 @@ Give each Step a distinct `test_name` so their reports get their own tab:
 | `locale` | Device locale, for example `en_US` or `de_DE`. |  |  |
 | `language` | App language as an ISO 639-1 code, for example `en` or `de`. |  |  |
 | `timezone` | Device time zone, for example `Europe/Brussels`. |  |  |
-| `build_name` | Identifier used to group the test sessions of one build together in the TestingBot dashboard. Defaults to the Bitrise app title and build number. |  | `$BITRISE_APP_TITLE - $BITRISE_BUILD_NUMBER` |
+| `build_name` | Identifier used to group the test sessions of one build together in the TestingBot dashboard.  Leave empty to name the build after the Bitrise app title and build number, for example `My App #42`. |  |  |
 | `test_name` | Shown in the TestingBot dashboard, and used as the tab name on Bitrise's Test Reports page. Give parallel Steps distinct names so their reports don't collide. | required | `Espresso` |
 | `test_runner` | Custom instrumentation runner, if you don't use the default `androidx.test.runner.AndroidJUnitRunner`. |  |  |
 | `filter_size` | Comma-separated list of test sizes to run, for example `small,medium`. |  |  |
