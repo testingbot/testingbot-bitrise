@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  BITRISE_ANALYTICS_DISABLED: "true"
+
 jobs:
   audit:
     name: Audit and offline tests
@@ -19,7 +22,7 @@ jobs:
     # to work on. Ubuntu ships bash 5 and would not catch a bashism.
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Install the Bitrise CLI
       run: |
@@ -29,6 +32,21 @@ jobs:
     - name: Install linters
       run: brew install shellcheck yamllint
 
+    - name: Toolchain
+      # Printed so a failure below is self-explaining: every CI-only failure so
+      # far has come from a tool behaving differently here than locally.
+      run: |
+        export PATH="$HOME/.bitrise/tools:$PATH"
+        echo "bash       $(bash --version | head -1)"
+        echo "sh -> $(readlink /var/select/sh 2>/dev/null || echo n/a)"
+        echo "bitrise    $(bitrise version)"
+        echo "stepman    $(stepman version 2>/dev/null || echo MISSING)"
+        echo "envman     $(envman version 2>/dev/null || echo MISSING)"
+        echo "shellcheck $(shellcheck --version | awk '/^version:/{print $2}')"
+        echo "yamllint   $(yamllint --version)"
+        echo "python3    $(python3 --version)"
+        echo "zip        $(zip -v | awk 'NR==2{print $2, $3}')"
+
     - name: Audit
       # Sync check, shellcheck, yamllint against Bitrise's own config,
       # stepman audit and bitrise validate per Step, then the offline suite.
@@ -36,7 +54,12 @@ jobs:
 
   check:
     name: StepLib linter
-    runs-on: macos-latest
+    # Linux, not macOS. steps-check is a Go-toolkit Step: Bitrise compiles it and
+    # caches the binary, and on the arm64 macOS runners dyld rejects the result
+    # with "missing LC_UUID load command" before the linter ever runs. Nothing
+    # here is macOS-specific -- it lints step.yml against the JSON schema and the
+    # README -- so Linux is the right host for it.
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -48,12 +71,15 @@ jobs:
         - testingbot-tunnel
         - testingbot-tunnel-stop
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Install the Bitrise CLI
       run: |
-        brew install bitrise
+        curl -fsSL -o /usr/local/bin/bitrise \
+          "https://github.com/bitrise-io/bitrise/releases/latest/download/bitrise-$(uname -s)-$(uname -m)"
+        chmod +x /usr/local/bin/bitrise
         bitrise setup
+        bitrise version
 
     - name: bitrise run check
       # The linter StepLib CI runs on a submission: yamllint, step.yml against
