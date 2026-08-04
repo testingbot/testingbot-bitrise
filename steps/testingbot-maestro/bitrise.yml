@@ -63,8 +63,17 @@ workflows:
               echo "error: expected the sample flows to pass" >&2; exit 1; }
             [ -f "$TESTINGBOT_JUNIT_REPORT_PATH" ] || {
               echo "error: no JUnit report was downloaded" >&2; exit 1; }
-            [ -f "$BITRISE_TEST_RESULT_DIR/Step self-test/test-info.json" ] || {
-              echo "error: the Test Reports export is missing" >&2; exit 1; }
+            # Bitrise gives each Step its own $BITRISE_TEST_RESULT_DIR under a
+            # per-build parent, so look in the parent rather than in this
+            # script's own (empty) directory.
+            results_root="$(dirname "$BITRISE_TEST_RESULT_DIR")"
+            info="$(find "$results_root" -type f -name test-info.json \
+              -path '*Step self-test*' 2>/dev/null | head -1)"
+            [ -n "$info" ] || {
+              echo "error: the Test Reports export is missing under $results_root" >&2
+              find "$results_root" >&2
+              exit 1; }
+            echo "Test Reports export: $info"
 
     - path::./:
         title: Sharding and artifact download

@@ -14,6 +14,13 @@ app:
   - SAMPLE_TEST_APK: $SAMPLE_TEST_APK
   - SAMPLE_DEVICE: Pixel 8
 
+  # The sample suite is deliberately mixed: CalculatorTest passes, while
+  # AdvancedCalculatorTest.ensureLargeNumbersWork asserts the display reads
+  # "50e.0" when the app renders "500.0". That gives the workflow a real pass
+  # and a real failure to check the Step against, rather than a simulated one.
+  - SAMPLE_PASSING_CLASS: com.testingbot.calculator.CalculatorTest
+  - SAMPLE_FAILING_CLASS: com.testingbot.calculator.AdvancedCalculatorTest
+
   # Used by `share-this-step`.
   - BITRISE_STEP_ID: testingbot-espresso
   - BITRISE_STEP_VERSION: 1.0.0
@@ -43,6 +50,10 @@ workflows:
 
     - path::./:
         title: Run the suite
+        description: |-
+          Filtered to CalculatorTest: the demo app's AdvancedCalculatorTest
+          contains a deliberately failing case, which the report-only Step
+          below uses.
         inputs:
         - testingbot_key: $TESTINGBOT_KEY
         - testingbot_secret: $TESTINGBOT_SECRET
@@ -50,6 +61,7 @@ workflows:
         - test_app_path: $SAMPLE_TEST_APK
         - device: $SAMPLE_DEVICE
         - test_name: Step self-test
+        - filter_class: $SAMPLE_PASSING_CLASS
 
     - script:
         title: Check the outputs
@@ -63,15 +75,28 @@ workflows:
               echo "error: expected the sample suite to pass" >&2; exit 1; }
             [ -f "$TESTINGBOT_JUNIT_REPORT_PATH" ] || {
               echo "error: no JUnit report was downloaded" >&2; exit 1; }
-            [ -f "$BITRISE_TEST_RESULT_DIR/Step self-test/test-info.json" ] || {
-              echo "error: the Test Reports export is missing" >&2; exit 1; }
+            # Bitrise gives each Step its own $BITRISE_TEST_RESULT_DIR under a
+            # per-build parent, so look in the parent rather than in this
+            # script's own (empty) directory.
+            results_root="$(dirname "$BITRISE_TEST_RESULT_DIR")"
+            info="$(find "$results_root" -type f -name test-info.json \
+              -path '*Step self-test*' 2>/dev/null | head -1)"
+            [ -n "$info" ] || {
+              echo "error: the Test Reports export is missing under $results_root" >&2
+              find "$results_root" >&2
+              exit 1; }
+            echo "Test Reports export: $info"
+            ls "$(dirname "$info")"/*.xml >/dev/null 2>&1 || {
+              echo "error: no JUnit XML next to $info" >&2; exit 1; }
 
     - path::./:
         title: Report-only mode keeps the build green
         description: |-
-          Filtering to a class that does not exist makes the run fail. With
+          Runs a class that genuinely fails on the device. With
           fail_on_test_failure off the Step must still succeed and report the
-          failure through TESTINGBOT_TEST_STATUS.
+          failure through TESTINGBOT_TEST_STATUS. Leaving that input at its
+          default is what turns the build red, which is the behaviour no
+          competitor's Bitrise Step has.
         inputs:
         - testingbot_key: $TESTINGBOT_KEY
         - testingbot_secret: $TESTINGBOT_SECRET
@@ -79,7 +104,7 @@ workflows:
         - test_app_path: $SAMPLE_TEST_APK
         - device: $SAMPLE_DEVICE
         - test_name: Report-only self-test
-        - filter_class: com.example.DoesNotExist
+        - filter_class: $SAMPLE_FAILING_CLASS
         - fail_on_test_failure: "false"
 
     - script:

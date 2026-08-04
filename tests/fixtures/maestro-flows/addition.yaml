@@ -1,0 +1,22 @@
+# Mirrors CalculatorTest#ensureAdditionWorks from
+# https://github.com/testingbot/android-espresso-demo-app
+#
+# Buttons are selected by resource id, not by text: the output field shows the
+# digits as they are typed, so `tapOn: "3"` could match the output rather than
+# the button.
+appId: com.testingbot.calculator
+name: Addition
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "butclear"
+- tapOn:
+    id: "but3"
+- tapOn:
+    id: "butplus"
+- tapOn:
+    id: "but5"
+- tapOn:
+    id: "buteq"
+- assertVisible: "8.0"

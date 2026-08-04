@@ -1,0 +1,17 @@
+# Mirrors CalculatorTest#ensureButtonsWork: digits accumulate in the output
+# field, so tapping 1 then 2 shows "12".
+#
+# A second flow exists so the `shard_split: "2"` step in bitrise.yml has
+# something real to split across two devices.
+appId: com.testingbot.calculator
+name: Digits
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "butclear"
+- tapOn:
+    id: "but1"
+- tapOn:
+    id: "but2"
+- assertVisible: "12"

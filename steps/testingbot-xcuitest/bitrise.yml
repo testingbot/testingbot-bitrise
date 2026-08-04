@@ -8,12 +8,16 @@ app:
   #  - TESTINGBOT_KEY
   #  - TESTINGBOT_SECRET
   #
-  # A sample IPA and the test bundle directory that `Xcode Build for testing`
-  # exports. The `test` workflow runs them on a real device, so these have to
-  # be genuine artifacts.
-  - SAMPLE_APP_IPA: $SAMPLE_APP_IPA
+  # A sample app and the test bundle directory that `Xcode Build for testing`
+  # exports. These have to be genuine artifacts -- scripts/e2e.sh in the
+  # development monorepo builds them from testingbot/xcuitest-example-app.
+  #
+  # Both are built for a DEVICE destination: TestingBot runs XCUITest on real
+  # devices only, and a simulator build never produces a result at all.
+  - SAMPLE_APP_PATH: $SAMPLE_APP_PATH
   - SAMPLE_TEST_BUNDLE: $SAMPLE_TEST_BUNDLE
   - SAMPLE_DEVICE: iPhone 16
+  - SAMPLE_REAL_DEVICE: "true"
 
   # Used by `share-this-step`.
   - BITRISE_STEP_ID: testingbot-xcuitest
@@ -25,7 +29,7 @@ workflows:
   test:
     summary: Runs a real XCUITest suite on TestingBot and checks the outputs.
     description: |-
-      Requires TESTINGBOT_KEY, TESTINGBOT_SECRET, SAMPLE_APP_IPA and
+      Requires TESTINGBOT_KEY, TESTINGBOT_SECRET, SAMPLE_APP_PATH and
       SAMPLE_TEST_BUNDLE. Offline tests that need no credentials and spend no
       device minutes live in tests/run.sh in the development monorepo.
     steps:
@@ -35,7 +39,7 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
             set -eo pipefail
-            for var in TESTINGBOT_KEY TESTINGBOT_SECRET SAMPLE_APP_IPA SAMPLE_TEST_BUNDLE; do
+            for var in TESTINGBOT_KEY TESTINGBOT_SECRET SAMPLE_APP_PATH SAMPLE_TEST_BUNDLE; do
               if [ -z "${!var}" ]; then
                 echo "error: \$$var is not set -- see bitrise.yml for what this workflow needs" >&2
                 exit 1
@@ -45,15 +49,18 @@ workflows:
     - path::./:
         title: Run the suite
         description: |-
-          SAMPLE_TEST_BUNDLE is a directory, so this also exercises the
-          locate-the-runner-and-zip path that iOS on Bitrise depends on.
+          SAMPLE_TEST_BUNDLE is a directory, so this exercises the
+          find-the-*-Runner.app-and-zip-it path that iOS on Bitrise depends on
+          and that has no Android counterpart. SAMPLE_APP_PATH is an .ipa, the
+          shape `Xcode Archive & Export` produces, and must be passed through
+          untouched.
         inputs:
         - testingbot_key: $TESTINGBOT_KEY
         - testingbot_secret: $TESTINGBOT_SECRET
-        - app_path: $SAMPLE_APP_IPA
+        - app_path: $SAMPLE_APP_PATH
         - test_app_path: $SAMPLE_TEST_BUNDLE
         - device: $SAMPLE_DEVICE
-        - real_device: "true"
+        - real_device: $SAMPLE_REAL_DEVICE
         - test_name: Step self-test
 
     - script:
@@ -68,8 +75,17 @@ workflows:
               echo "error: expected the sample suite to pass" >&2; exit 1; }
             [ -f "$TESTINGBOT_JUNIT_REPORT_PATH" ] || {
               echo "error: no JUnit report was downloaded" >&2; exit 1; }
-            [ -f "$BITRISE_TEST_RESULT_DIR/Step self-test/test-info.json" ] || {
-              echo "error: the Test Reports export is missing" >&2; exit 1; }
+            # Bitrise gives each Step its own $BITRISE_TEST_RESULT_DIR under a
+            # per-build parent, so look in the parent rather than in this
+            # script's own (empty) directory.
+            results_root="$(dirname "$BITRISE_TEST_RESULT_DIR")"
+            info="$(find "$results_root" -type f -name test-info.json \
+              -path '*Step self-test*' 2>/dev/null | head -1)"
+            [ -n "$info" ] || {
+              echo "error: the Test Reports export is missing under $results_root" >&2
+              find "$results_root" >&2
+              exit 1; }
+            echo "Test Reports export: $info"
 
   check:
     summary: Lints step.yml and the README against each other.

@@ -33,13 +33,18 @@ workflows:
                 exit 1
               fi
             done
+            # $BITRISE_BUILD_NUMBER is empty outside a Bitrise build, which
+            # would leave a trailing dash and make concurrent local runs share
+            # one identifier.
+            envman add --key SELFTEST_TUNNEL_ID \
+              --value "step-selftest-${BITRISE_BUILD_NUMBER:-$$}"
 
     - path::./:
         title: Start the tunnel
         inputs:
         - testingbot_key: $TESTINGBOT_KEY
         - testingbot_secret: $TESTINGBOT_SECRET
-        - tunnel_identifier: step-selftest-$BITRISE_BUILD_NUMBER
+        - tunnel_identifier: $SELFTEST_TUNNEL_ID
         - ready_timeout: "180"
 
     - script:
@@ -56,12 +61,19 @@ workflows:
             kill -0 "$TESTINGBOT_TUNNEL_PID" || {
               echo "error: the tunnel process is not running" >&2; exit 1; }
 
-            # TestingBot should now list the tunnel as active.
+            [ "$TESTINGBOT_TUNNEL_IDENTIFIER" = "$SELFTEST_TUNNEL_ID" ] || {
+              echo "error: expected identifier '$SELFTEST_TUNNEL_ID', got '$TESTINGBOT_TUNNEL_IDENTIFIER'" >&2
+              exit 1; }
+
+            # TestingBot should now list the tunnel as READY. The response
+            # carries state/id/ip but NOT the tunnel identifier, so there is
+            # nothing to correlate against beyond the state.
             curl --fail --silent --show-error \
               -u "$TESTINGBOT_KEY:$TESTINGBOT_SECRET" \
               https://api.testingbot.com/v1/tunnel/list | tee /tmp/tunnels.json
-            grep -q "$TESTINGBOT_TUNNEL_IDENTIFIER" /tmp/tunnels.json || {
-              echo "error: TestingBot does not list this tunnel as active" >&2; exit 1; }
+            echo
+            grep -q '"state":"READY"' /tmp/tunnels.json || {
+              echo "error: TestingBot lists no READY tunnel" >&2; exit 1; }
 
     - script:
         title: Stop the tunnel

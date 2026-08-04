@@ -54,15 +54,27 @@ workflows:
             #!/usr/bin/env bash
             set -eo pipefail
             echo "TESTINGBOT_APP_URL=$TESTINGBOT_APP_URL"
+            echo "TESTINGBOT_APP_ID=$TESTINGBOT_APP_ID"
+            echo "TESTINGBOT_APP_TYPE=$TESTINGBOT_APP_TYPE"
             echo "TESTINGBOT_APP_STATE=$TESTINGBOT_APP_STATE"
+            echo "TESTINGBOT_APP_VERSION=$TESTINGBOT_APP_VERSION"
             case "$TESTINGBOT_APP_URL" in
               tb://*) ;;
               *) echo "error: expected a tb:// identifier, got '$TESTINGBOT_APP_URL'" >&2; exit 1 ;;
             esac
-            [ "$TESTINGBOT_APP_STATE" = "READY" ] || {
-              echo "error: expected state READY, got '$TESTINGBOT_APP_STATE'" >&2; exit 1; }
+            # The upload POST returns only app_url; these prove the follow-up
+            # metadata call ran and was parsed.
             [ -n "$TESTINGBOT_APP_ID" ] || {
               echo "error: TESTINGBOT_APP_ID was not exported" >&2; exit 1; }
+            [ -n "$TESTINGBOT_APP_TYPE" ] || {
+              echo "error: TESTINGBOT_APP_TYPE was not exported" >&2; exit 1; }
+            # wait_for_processing was on, so the metadata job must have finished
+            # and the version it extracts must be present.
+            [ "$TESTINGBOT_APP_STATE" = "DONE" ] || {
+              echo "error: expected state DONE, got '$TESTINGBOT_APP_STATE'" >&2; exit 1; }
+            [ -n "$TESTINGBOT_APP_VERSION" ] || {
+              echo "error: TESTINGBOT_APP_VERSION was not exported despite state DONE" >&2
+              exit 1; }
 
     - path::./:
         title: Re-upload under a stable app key
