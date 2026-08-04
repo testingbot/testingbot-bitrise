@@ -22,7 +22,7 @@ jobs:
     # to work on. Ubuntu ships bash 5 and would not catch a bashism.
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
 
     - name: Install the Bitrise CLI
       run: |
@@ -71,7 +71,7 @@ jobs:
         - testingbot-tunnel
         - testingbot-tunnel-stop
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
 
     - name: Install the Bitrise CLI
       run: |
