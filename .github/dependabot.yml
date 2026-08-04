@@ -1,0 +1,15 @@
+version: 2
+
+updates:
+# The Steps themselves have no package manifest -- they are bash, and the one
+# dependency they pin (`cli_version`, the @testingbot/cli release) lives inside
+# each step.yml, which Dependabot cannot parse. That pin is handled by the
+# regex manager in renovate.json instead.
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: monthly
+  commit-message:
+    prefix: "ci"
+  labels:
+  - dependencies

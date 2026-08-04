@@ -1,0 +1,32 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "description": [
+    "Keeps the pinned @testingbot/cli release current. The three test Steps",
+    "invoke `npx @testingbot/cli@<cli_version>`, and the pin is what makes a",
+    "published Step reproducible -- so it has to be bumped deliberately rather",
+    "than floated to `latest`. Dependabot cannot see it: it is a bare version",
+    "string inside step.yml, not a package manifest.",
+    "",
+    "Requires the Renovate GitHub App to be installed on the testingbot org.",
+    "Without it this file is inert."
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "cli_version in each Step's step.yml",
+      "managerFilePatterns": ["/^steps/.+/step\\.yml$/"],
+      "matchStrings": ["- cli_version: (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "@testingbot/cli",
+      "datasourceTemplate": "npm"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": ["@testingbot/cli"],
+      "commitMessagePrefix": "steps:",
+      "commitMessageTopic": "the pinned TestingBot CLI",
+      "addLabels": ["dependencies"]
+    }
+  ]
+}

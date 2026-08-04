@@ -35,6 +35,7 @@ it references.
 steps/<id>/           one Step: step.yml, step.sh, bitrise.yml, README.md, docs/
 lib/testingbot.bash   shared bash helpers, inlined into each step.sh
 shared/               files copied verbatim into every Step (docs/contributing.md)
+assets/icon.svg       the Step icon, synced into every steps/<id>/assets/
 scripts/build.sh      sync shared sources into each Step
 scripts/gen-readme.sh regenerate READMEs with Bitrise's steps-readme-generator
 scripts/publish.sh    mirror one Step to its own repo, tag it, print share commands
@@ -45,7 +46,7 @@ tests/                offline test suite, runs the Steps against mocks
 Generated, so never edit by hand:
 
 - the inlined library between the markers in each `step.sh` — `scripts/build.sh`
-- each Step's `LICENSE`, `.gitignore` and `docs/contributing.md` — `scripts/build.sh`
+- each Step's `LICENSE`, `.gitignore`, `docs/contributing.md` and `assets/icon.svg` — `scripts/build.sh`
 - each Step's `README.md` — `scripts/gen-readme.sh`, which runs Bitrise's own
   `steps-readme-generator` from `step.yml` + `docs/examples.md` +
   `docs/contributing.md`

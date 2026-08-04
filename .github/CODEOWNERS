@@ -1,0 +1,13 @@
+# Every Step here is mirrored to its own public repository and published to the
+# Bitrise StepLib. Verified Steps carry a maintainer SLA -- first response
+# within 5 business days -- so reviews must not sit unassigned.
+#
+# A CODEOWNERS entry naming a team that does not exist, or a user without write
+# access, is silently ignored: GitHub assigns nobody and no warning reaches the
+# pull request. Prefer a team here once one exists (@testingbot/<team>), since a
+# single username stops working the day that person is away.
+#
+# Note that user-facing issues land on the six mirrors rather than on this
+# monorepo, so each mirror wants its own copy of this file.
+
+* @jochen-testingbot

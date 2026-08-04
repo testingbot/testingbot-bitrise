@@ -1,0 +1,63 @@
+name: CI
+
+# Everything here runs offline: the Steps are exercised against tests/mock_api.py
+# and tests/stubs/, so no TestingBot credentials are needed and no device minutes
+# are spent. The live checks live in scripts/e2e.sh and are run by hand.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit and offline tests
+    # macOS so the suite runs against bash 3.2, the oldest shell the Steps have
+    # to work on. Ubuntu ships bash 5 and would not catch a bashism.
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install the Bitrise CLI
+      run: |
+        brew install bitrise
+        bitrise setup
+
+    - name: Install linters
+      run: brew install shellcheck yamllint
+
+    - name: Audit
+      # Sync check, shellcheck, yamllint against Bitrise's own config,
+      # stepman audit and bitrise validate per Step, then the offline suite.
+      run: ./scripts/audit-all.sh
+
+  check:
+    name: StepLib linter
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        step:
+        - testingbot-upload-app
+        - testingbot-espresso
+        - testingbot-xcuitest
+        - testingbot-maestro
+        - testingbot-tunnel
+        - testingbot-tunnel-stop
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install the Bitrise CLI
+      run: |
+        brew install bitrise
+        bitrise setup
+
+    - name: bitrise run check
+      # The linter StepLib CI runs on a submission: yamllint, step.yml against
+      # the official JSON schema, and step.yml against the README. Slow (it
+      # clones a repo per Step), which is why it is a separate job.
+      working-directory: steps/${{ matrix.step }}
+      run: bitrise run check
