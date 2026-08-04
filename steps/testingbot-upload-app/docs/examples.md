@@ -61,7 +61,7 @@ variable through:
     inputs:
     - testingbot_key: $TESTINGBOT_KEY
     - testingbot_secret: $TESTINGBOT_SECRET
-    - apk_ipa_filepath: $BITRISE_SOURCE_DIR/build/outputs/apk/debug/app-debug.apk
+    - app_path: $BITRISE_SOURCE_DIR/build/outputs/apk/debug/app-debug.apk
 ```
 
 ### Let TestingBot fetch the app instead of uploading it

@@ -94,7 +94,7 @@ run_step() {
 
 # reset_env -- clear every input between test cases so they can't leak.
 reset_env() {
-  unset testingbot_key testingbot_secret apk_ipa_filepath app_url app_key
+  unset testingbot_key testingbot_secret app_path app_url app_key
   unset wait_for_processing processing_timeout
   unset BITRISE_APK_PATH BITRISE_AAB_PATH BITRISE_IPA_PATH BITRISE_APP_DIR_PATH
   export testingbot_key="test-key"
@@ -127,7 +127,7 @@ echo "testingbot-upload-app"
 
 # 1. Happy path: explicit app path.
 reset_env
-export apk_ipa_filepath="$FIXTURE_APK"
+export app_path="$FIXTURE_APK"
 run_step testingbot-upload-app
 assert_status "uploads an app and exits 0" "$STATUS" 0
 assert_contains "exports the tb:// identifier" "$OUTPUT" "TESTINGBOT_APP_URL=tb://"
@@ -156,7 +156,7 @@ assert_status "falls through to \$BITRISE_IPA_PATH" "$STATUS" 0
 
 # 4. Stable app identifier.
 reset_env
-export apk_ipa_filepath="$FIXTURE_APK"
+export app_path="$FIXTURE_APK"
 export app_key="my-stable-app"
 run_step testingbot-upload-app
 assert_status "uploads under a stable app_key" "$STATUS" 0
@@ -172,7 +172,7 @@ assert_contains "reports the source URL" "$OUTPUT" "https://example.com/app.apk"
 # 6. Metadata extraction runs asynchronously: the Step must wait for state DONE
 #    rather than reporting the null version it sees on the first GET.
 reset_env
-export apk_ipa_filepath="$FIXTURE_APK"
+export app_path="$FIXTURE_APK"
 export app_key="slowmeta-app"
 run_step testingbot-upload-app
 assert_status "waits out PROCESSING and exits 0" "$STATUS" 0
@@ -185,7 +185,7 @@ assert_contains "exports the version the wait uncovered" "$OUTPUT" "TESTINGBOT_A
 # 7. Waiting is optional. Without it the Step returns immediately with whatever
 #    the API has so far, and says so through TESTINGBOT_APP_STATE.
 reset_env
-export apk_ipa_filepath="$FIXTURE_APK"
+export app_path="$FIXTURE_APK"
 export app_key="slowmeta-nowait"
 export wait_for_processing="false"
 run_step testingbot-upload-app
@@ -197,7 +197,7 @@ assert_contains "still exports the identifier" "$OUTPUT" "TESTINGBOT_APP_URL=tb:
 # 8. Metadata that never finishes must not fail an upload that succeeded -- the
 #    binary is stored and testable either way.
 reset_env
-export apk_ipa_filepath="$FIXTURE_APK"
+export app_path="$FIXTURE_APK"
 export app_key="stuckmeta-app"
 export processing_timeout="2"
 run_step testingbot-upload-app
@@ -208,7 +208,7 @@ assert_contains "still exports the identifier" "$OUTPUT" "TESTINGBOT_APP_URL=tb:
 
 # 9. A non-numeric timeout falls back to the default instead of erroring out.
 reset_env
-export apk_ipa_filepath="$FIXTURE_APK"
+export app_path="$FIXTURE_APK"
 export processing_timeout="not-a-number"
 run_step testingbot-upload-app
 assert_status "survives a bad processing_timeout" "$STATUS" 0
@@ -223,14 +223,14 @@ assert_contains "names the build Step to add" "$OUTPUT" "BITRISE_APK_PATH"
 
 # 11. Explicit path that does not exist.
 reset_env
-export apk_ipa_filepath="${WORK}/nope.apk"
+export app_path="${WORK}/nope.apk"
 run_step testingbot-upload-app
 assert_status "fails when the given path is missing" "$STATUS" 1
 assert_contains "reports the path it looked for" "$OUTPUT" "nope.apk"
 
 # 12. Bad credentials -> the named auth error, not raw JSON.
 reset_env
-export apk_ipa_filepath="$FIXTURE_APK"
+export app_path="$FIXTURE_APK"
 export testingbot_secret="wrong"
 run_step testingbot-upload-app
 assert_status "fails on bad credentials" "$STATUS" 1
@@ -247,14 +247,14 @@ assert_contains "maps HTTP 403 to a readable message" "$OUTPUT" "read-only"
 # 14. Empty credentials are caught before any network call.
 reset_env
 export testingbot_key=""
-export apk_ipa_filepath="$FIXTURE_APK"
+export app_path="$FIXTURE_APK"
 run_step testingbot-upload-app
 assert_status "fails when the key input is empty" "$STATUS" 1
 assert_contains "names the empty input" "$OUTPUT" "testingbot_key"
 
 # 15. An unreachable API is a real failure -- the upload never happened.
 reset_env
-export apk_ipa_filepath="$FIXTURE_APK"
+export app_path="$FIXTURE_APK"
 export TB_API_BASE="http://127.0.0.1:1/v1"
 run_step testingbot-upload-app
 export TB_API_BASE="http://127.0.0.1:${MOCK_PORT}/v1"
@@ -274,7 +274,7 @@ reset_espresso_env() {
   unset build_name test_name test_runner filter_size fail_on_test_failure run_async
   unset filter_class filter_not_class filter_package filter_not_package
   unset filter_annotation filter_not_annotation
-  unset throttle_network geo_location tunnel tunnel_identifier
+  unset throttle_network geo_country_code tunnel tunnel_identifier
   unset export_to_test_reports report_output_dir cli_version additional_args quiet
   unset BITRISE_APK_PATH BITRISE_TEST_APK_PATH BITRISE_TEST_RESULT_DIR
   unset BITRISE_GIT_COMMIT BITRISE_PULL_REQUEST GIT_REPOSITORY_URL BITRISE_APP_TITLE
@@ -437,7 +437,7 @@ assert_argv "derives the repo name" --repo-name "example-app"
 #      calls this --geo-country-code, not the --geo-location its README shows.
 reset_espresso_env
 export app_path="$APP_APK" test_app_path="$TEST_APK"
-export geo_location="DE"
+export geo_country_code="DE"
 export BITRISE_APP_TITLE="Example App"
 export BITRISE_BUILD_NUMBER="9"
 run_step testingbot-espresso
@@ -480,10 +480,10 @@ assert_contains "names the device input" "$OUTPUT" "device"
 
 reset_maestro_env() {
   unset testingbot_key testingbot_secret device flows app_path
-  unset platform device_version real_device orientation device_locale timezone
+  unset platform platform_version real_device orientation locale timezone
   unset groups test_name include_tags exclude_tags flow_env
   unset fail_on_test_failure shard_split retry run_async
-  unset throttle_network geo_location tunnel tunnel_identifier
+  unset throttle_network geo_country_code tunnel tunnel_identifier
   unset export_to_test_reports download_artifacts report_output_dir
   unset maestro_version maestro_config cli_version additional_args quiet
   unset BITRISE_APK_PATH BITRISE_AAB_PATH BITRISE_IPA_PATH BITRISE_APP_DIR_PATH
@@ -601,7 +601,7 @@ assert_no_argv_flag "omits artifact download by default" --download-artifacts
 reset_maestro_env
 export app_path="$APP_APK" flows="$FLOW_DIR"
 export groups="nightly,critical"
-export geo_location="DE"
+export geo_country_code="DE"
 export BITRISE_APP_TITLE="Example App"
 export BITRISE_BUILD_NUMBER="9"
 run_step testingbot-maestro
@@ -630,8 +630,8 @@ assert_contains "names the flows input" "$OUTPUT" "flows"
 reset_xcuitest_env() {
   unset testingbot_key testingbot_secret device app_path test_app_path
   unset platform_version real_device tablet_only phone_only orientation
-  unset locale language timezone build_name test_name geo_location
-  unset fail_on_test_failure run_async throttle_network geo_location
+  unset locale language timezone build_name test_name geo_country_code
+  unset fail_on_test_failure run_async throttle_network geo_country_code
   unset tunnel tunnel_identifier export_to_test_reports report_output_dir
   unset cli_version additional_args quiet
   unset BITRISE_IPA_PATH BITRISE_APP_DIR_PATH BITRISE_TEST_BUNDLE_PATH
@@ -746,7 +746,7 @@ assert_status "fails the build when a test fails" "$STATUS" 1
 # 6b. xcuitest does accept --build, and uses --geo-country-code.
 reset_xcuitest_env
 export app_path="$APP_IPA" test_app_path="$BUNDLE_DIR"
-export geo_location="US"
+export geo_country_code="US"
 run_step testingbot-xcuitest
 assert_argv_flag "xcuitest accepts --build" --build
 assert_argv "uses --geo-country-code" --geo-country-code "US"

@@ -169,7 +169,7 @@ If you build the zip yourself, hand it over directly:
 | `app_path` | Path to the application IPA.  Leave empty to use `$BITRISE_IPA_PATH` from the preceding `Xcode Archive & Export` Step, falling back to `$BITRISE_APP_DIR_PATH`. |  |  |
 | `test_app_path` | The XCUITest suite. Accepts a `.zip`, a `*-Runner.app`, or the test bundle **directory** that `Xcode Build for testing` exports — in which case the Step finds the runner inside it and zips it for you.  Leave empty to use `$BITRISE_TEST_BUNDLE_PATH`. |  |  |
 | `platform_version` | iOS version, for example `17.2` or `18.0`. |  |  |
-| `real_device` | Run on a physical device. Simulators are faster and cheaper for most suites; real devices matter for hardware-dependent behaviour.  A real-device run needs an IPA built for a device destination. |  | `false` |
+| `real_device` | Run on a physical device.  TestingBot runs XCUITest on **real devices only**, so leave this on. Turning it off makes the run wait for a result that never arrives.  Build the app and the test bundle for a device destination — `generic/platform=iOS`, not `iOS Simulator`. A simulator build is rejected by the device. |  | `true` |
 | `tablet_only` | Only allocate iPad devices. |  | `false` |
 | `phone_only` | Only allocate iPhone devices. |  | `false` |
 | `orientation` | Screen orientation: PORTRAIT or LANDSCAPE. Device default when empty. |  |  |
@@ -181,9 +181,9 @@ If you build the zip yourself, hand it over directly:
 | `fail_on_test_failure` | When enabled (the default) a failing test fails the Step, and so the build.  Turn it off for a report-only run — the Step then succeeds regardless, and you can branch on the exported `$TESTINGBOT_TEST_STATUS`. | required | `true` |
 | `run_async` | Start the run and return without waiting for it to finish.  Nothing is polled, no report is downloaded, and the Step cannot fail on a test failure — check the TestingBot dashboard instead. |  | `false` |
 | `throttle_network` | Simulate a slower network: `4G`, `3G`, `Edge` or `airplane`. |  |  |
-| `geo_location` | Route device traffic through a country, as an ISO code such as `US` or `DE`. |  |  |
+| `geo_country_code` | Route device traffic through a country, as an ISO code such as `US` or `DE`. |  |  |
 | `tunnel` | Starts a TestingBot Tunnel for the duration of the run, so the app can reach a staging environment that isn't publicly routable.  Cannot be combined with `run_async`. |  | `false` |
-| `tunnel_identifier` | Identifier of the tunnel to use. Set it when you run several tunnels in parallel, or to reuse a tunnel opened by the `TestingBot Tunnel` Step. |  |  |
+| `tunnel_identifier` | Identifier of the tunnel to use.  Defaults to the tunnel opened by the `TestingBot Tunnel` Step earlier in the Workflow, which exports `$TESTINGBOT_TUNNEL_IDENTIFIER`. Set it explicitly only when you run several tunnels in parallel. |  | `$TESTINGBOT_TUNNEL_IDENTIFIER` |
 | `export_to_test_reports` | Downloads the JUnit report and lays it out for Bitrise's Test Reports add-on.  You still need the `Deploy to Bitrise.io` Step afterwards — that Step is what uploads what this one exports. |  | `true` |
 | `report_output_dir` | Directory the JUnit report is downloaded into. Defaults to a temporary directory. The path is exported as `$TESTINGBOT_JUNIT_REPORT_PATH`. |  |  |
 | `cli_version` | The [TestingBot CLI](https://github.com/testingbot/testingbotctl) version this Step runs. Pinned so builds stay reproducible; set `latest` to always take the newest release. | required | `1.1.1` |

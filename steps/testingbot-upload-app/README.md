@@ -32,6 +32,20 @@ rather hard-code the identifier once and never touch it again, set `app_key` to
 a name of your choice — each build then replaces the binary stored under that
 name while `tb://<your-name>` stays the same.
 
+### Upgrading from 0.0.1
+
+The app path input is now called `app_path`, matching the TestingBot App
+Automate Steps. Rename it when you move to 1.0.0:
+
+```yaml
+- testingbot-upload-app:
+    inputs:
+    - app_path: $BITRISE_APK_PATH   # was: apk_ipa_filepath
+```
+
+You can also just delete the line — the Step finds the preceding build
+Step's artifact on its own.
+
 ### Troubleshooting
 
 - **HTTP 401** — the key/secret pair is wrong, or the Secret isn't exposed to
@@ -117,7 +131,7 @@ variable through:
     inputs:
     - testingbot_key: $TESTINGBOT_KEY
     - testingbot_secret: $TESTINGBOT_SECRET
-    - apk_ipa_filepath: $BITRISE_SOURCE_DIR/build/outputs/apk/debug/app-debug.apk
+    - app_path: $BITRISE_SOURCE_DIR/build/outputs/apk/debug/app-debug.apk
 ```
 
 ### Let TestingBot fetch the app instead of uploading it
@@ -162,8 +176,8 @@ skip the wait:
 | --- | --- | --- | --- |
 | `testingbot_key` | Your TestingBot API key, from the [member area](https://testingbot.com/members/user/api).  Store it as a Bitrise Secret and reference it here. | required, sensitive | `$TESTINGBOT_KEY` |
 | `testingbot_secret` | Your TestingBot API secret, from the [member area](https://testingbot.com/members/user/api).  Store it as a Bitrise Secret and reference it here. | required, sensitive | `$TESTINGBOT_SECRET` |
-| `apk_ipa_filepath` | Local path to the app binary (`.apk`, `.aab`, `.ipa`, `.app`, `.zip`).  Leave empty to use the artifact produced by the preceding build Step. The Step looks at, in order:  - `$BITRISE_APK_PATH` - `$BITRISE_AAB_PATH` - `$BITRISE_IPA_PATH` - `$BITRISE_APP_DIR_PATH` |  |  |
-| `app_url` | A public `https://` URL that TestingBot downloads the binary from, instead of this Step uploading a local file.  Useful when the artifact already lives somewhere reachable — it saves pushing the binary out of the build machine a second time. Takes precedence over `apk_ipa_filepath`. |  |  |
+| `app_path` | Local path to the app binary (`.apk`, `.aab`, `.ipa`, `.app`, `.zip`).  Leave empty to use the artifact produced by the preceding build Step. The Step looks at, in order:  - `$BITRISE_APK_PATH` - `$BITRISE_AAB_PATH` - `$BITRISE_IPA_PATH` - `$BITRISE_APP_DIR_PATH` |  |  |
+| `app_url` | A public `https://` URL that TestingBot downloads the binary from, instead of this Step uploading a local file.  Useful when the artifact already lives somewhere reachable — it saves pushing the binary out of the build machine a second time. Takes precedence over `app_path`. |  |  |
 | `app_key` | When set, the app is stored under this name and the exported identifier is always `tb://<app_key>`, no matter how often you re-upload.  That lets you hard-code the `appium:app` capability in your test code once. Leave empty to get a new identifier per upload. |  |  |
 | `wait_for_processing` | TestingBot extracts an uploaded app's version, minimum OS version and icon in the background. The stored app reports `state: PROCESSING` until that finishes, then `state: DONE`.  With this enabled the Step polls until the state is `DONE`, so `$TESTINGBOT_APP_VERSION` is either the real version or a genuine absence — not just "not extracted yet".  Turn it off if you only need `$TESTINGBOT_APP_URL` and don't want to wait. The identifier is usable for testing either way; check `$TESTINGBOT_APP_STATE` to see which you got. | required | `true` |
 | `processing_timeout` | How long to wait for `state` to become `DONE`, in seconds. Extraction normally takes a few seconds.  Running out of time is **not** a Step failure — the app is uploaded and testable regardless. The Step warns, exports `$TESTINGBOT_APP_STATE=PROCESSING` and carries on.  Only used when `wait_for_processing` is enabled. | required | `300` |

@@ -374,7 +374,7 @@ tb_switch() {
 }
 
 # tb_cli_common_flags -- flags every framework Step passes.
-# Expects: test_name, tunnel, tunnel_identifier, throttle_network, geo_location,
+# Expects: test_name, tunnel, tunnel_identifier, throttle_network, geo_country_code,
 #          timezone, run_async, quiet.
 #
 # `--build` is deliberately NOT here: the CLI accepts it for espresso and
@@ -384,8 +384,7 @@ tb_cli_common_flags() {
   tb_flag --name "$test_name"
   tb_flag --tunnel-identifier "$tunnel_identifier"
   tb_flag --throttle-network "$throttle_network"
-  # The CLI calls this --geo-country-code, not --geo-location.
-  tb_flag --geo-country-code "$geo_location"
+  tb_flag --geo-country-code "$geo_country_code"
   tb_flag --timezone "$timezone"
   tb_switch --tunnel "$tunnel"
   tb_switch --async "$run_async"
@@ -753,10 +752,10 @@ EOF
 
 tb_flag --device "$device"
 tb_flag --platform "$platform"
-tb_flag --deviceVersion "$device_version"
+tb_flag --deviceVersion "$platform_version"
 tb_switch --real-device "$real_device"
 tb_flag --orientation "$orientation"
-tb_flag --device-locale "$device_locale"
+tb_flag --device-locale "$locale"
 
 tb_flag --groups "$groups"
 tb_flag --include-tags "$include_tags"

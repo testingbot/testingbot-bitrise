@@ -272,10 +272,10 @@ inputs:
     title: Network throttling
     summary: "Simulate a slower network: `4G`, `3G`, `Edge` or `airplane`."
 
-- geo_location:
+- geo_country_code:
   opts:
     category: Network and location
-    title: Geolocation
+    title: Geolocation country
     summary: Route device traffic through a country, as an ISO code such as `US` or `DE`.
     is_expand: true
 
@@ -293,14 +293,17 @@ inputs:
     - "true"
     - "false"
 
-- tunnel_identifier:
+- tunnel_identifier: $TESTINGBOT_TUNNEL_IDENTIFIER
   opts:
     category: Network and location
     title: Tunnel identifier
     summary: Name of the tunnel to route through.
     description: |-
-      Identifier of the tunnel to use. Set it when you run several tunnels in
-      parallel, or to reuse a tunnel opened by the `TestingBot Tunnel` Step.
+      Identifier of the tunnel to use.
+
+      Defaults to the tunnel opened by the `TestingBot Tunnel` Step earlier in
+      the Workflow, which exports `$TESTINGBOT_TUNNEL_IDENTIFIER`. Set it
+      explicitly only when you run several tunnels in parallel.
     is_expand: true
 
 - export_to_test_reports: "true"

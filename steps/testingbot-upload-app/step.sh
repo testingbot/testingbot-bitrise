@@ -372,7 +372,7 @@ tb_switch() {
 }
 
 # tb_cli_common_flags -- flags every framework Step passes.
-# Expects: test_name, tunnel, tunnel_identifier, throttle_network, geo_location,
+# Expects: test_name, tunnel, tunnel_identifier, throttle_network, geo_country_code,
 #          timezone, run_async, quiet.
 #
 # `--build` is deliberately NOT here: the CLI accepts it for espresso and
@@ -382,8 +382,7 @@ tb_cli_common_flags() {
   tb_flag --name "$test_name"
   tb_flag --tunnel-identifier "$tunnel_identifier"
   tb_flag --throttle-network "$throttle_network"
-  # The CLI calls this --geo-country-code, not --geo-location.
-  tb_flag --geo-country-code "$geo_location"
+  tb_flag --geo-country-code "$geo_country_code"
   tb_flag --timezone "$timezone"
   tb_switch --tunnel "$tunnel"
   tb_switch --async "$run_async"
@@ -720,13 +719,13 @@ if [ -n "$app_url" ]; then
     --user "${testingbot_key}:${testingbot_secret}" \
     --data-urlencode "url=${app_url}"
 else
-  local_app_path="$(tb_detect_app "$apk_ipa_filepath" \
+  local_app_path="$(tb_detect_app "$app_path" \
     "$BITRISE_APK_PATH" \
     "$BITRISE_AAB_PATH" \
     "$BITRISE_IPA_PATH" \
     "$BITRISE_APP_DIR_PATH")" || tb_fail APP_NOT_FOUND
 
-  if [ -z "$apk_ipa_filepath" ]; then
+  if [ -z "$app_path" ]; then
     tb_info "No app path given -- using the artifact from the preceding build Step."
   fi
   tb_assert_exists "$local_app_path" APP_FILE_MISSING

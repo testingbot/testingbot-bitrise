@@ -182,10 +182,10 @@ Prefer fixing the flow — this will also hide a real regression:
 | `device` | The device to run the flows on.  Exact names work (`Pixel 9`, `iPhone 16`), and so do wildcards and regular expressions, which is usually what you want in CI so a busy device doesn't block the build:  - `Pixel.*` — any Pixel - `iPhone 1[56]` — an iPhone 15 or 16 - `*` — any available device  See the [device list](https://testingbot.com/devices). | required | `*` |
 | `app_path` | Path to the app (`.apk`, `.ipa`, `.app` or `.zip`).  Leave empty to use the artifact of the preceding build Step — `$BITRISE_APK_PATH`, `$BITRISE_AAB_PATH`, `$BITRISE_IPA_PATH` or `$BITRISE_APP_DIR_PATH`, in that order. |  |  |
 | `platform` | `Android` or `iOS`. Inferred from the app when left empty. |  |  |
-| `device_version` | OS version, for example `14` or `17.2`. |  |  |
+| `platform_version` | OS version, for example `14` or `17.2`. |  |  |
 | `real_device` | Run on a physical device rather than an emulator or simulator. |  | `false` |
 | `orientation` | Screen orientation: PORTRAIT or LANDSCAPE. Device default when empty. |  |  |
-| `device_locale` | Device locale, for example `en_US` or `de_DE`. |  |  |
+| `locale` | Device locale, for example `en_US` or `de_DE`. |  |  |
 | `timezone` | Device time zone, for example `Europe/Brussels`. |  |  |
 | `groups` | Groups appear on the test in the TestingBot dashboard and are the way to label a run — for example `nightly` or `pr-checks`.  Note the Maestro command has no build identifier of its own, unlike the Espresso and XCUITest Steps. |  |  |
 | `test_name` | Shown in the TestingBot dashboard, and used as the tab name on Bitrise's Test Reports page. Give parallel Steps distinct names so their reports don't collide. | required | `Maestro` |
@@ -197,9 +197,9 @@ Prefer fixing the flow — this will also hide a real regression:
 | `retry` | Re-runs only the flows that failed, as soon as they fail. The last attempt decides the result, consistently across the exit code, the TestingBot dashboard and the downloaded report.  Useful for genuinely flaky flows; it will also mask a real regression, so prefer fixing the flow. | required | `0` |
 | `run_async` | Start the run and return without waiting for it to finish.  Nothing is polled, no report is downloaded, and the Step cannot fail on a flow failure — check the TestingBot dashboard instead. Cannot be combined with `tunnel` or `retry`. |  | `false` |
 | `throttle_network` | Simulate a slower network: `4G`, `3G`, `Edge` or `airplane`. |  |  |
-| `geo_location` | Route device traffic through a country, as an ISO code such as `US` or `DE`. |  |  |
+| `geo_country_code` | Route device traffic through a country, as an ISO code such as `US` or `DE`. |  |  |
 | `tunnel` | Starts a TestingBot Tunnel for the duration of the run, so the app can reach a staging environment that isn't publicly routable.  Cannot be combined with `run_async`. |  | `false` |
-| `tunnel_identifier` | Identifier of the tunnel to use. Set it when you run several tunnels in parallel, or to reuse a tunnel opened by the `TestingBot Tunnel` Step. |  |  |
+| `tunnel_identifier` | Identifier of the tunnel to use.  Defaults to the tunnel opened by the `TestingBot Tunnel` Step earlier in the Workflow, which exports `$TESTINGBOT_TUNNEL_IDENTIFIER`. Set it explicitly only when you run several tunnels in parallel. |  | `$TESTINGBOT_TUNNEL_IDENTIFIER` |
 | `export_to_test_reports` | Downloads the JUnit report and lays it out for Bitrise's Test Reports add-on.  You still need the `Deploy to Bitrise.io` Step afterwards — that Step is what uploads what this one exports. |  | `true` |
 | `download_artifacts` | Downloads test artifacts as a zip:  - `none` — don't download anything - `failed` — only artifacts of failed flows - `all` — everything  The zip lands in `$BITRISE_DEPLOY_DIR`, so `Deploy to Bitrise.io` attaches it to the build. | required | `none` |
 | `report_output_dir` | Directory the JUnit report is downloaded into. Defaults to a temporary directory. The path is exported as `$TESTINGBOT_JUNIT_REPORT_PATH`. |  |  |

@@ -214,9 +214,9 @@ Give each Step a distinct `test_name` so their reports get their own tab:
 | `filter_annotation` | Comma-separated annotations, for example `com.example.SmokeTest`. |  |  |
 | `filter_not_annotation` | Comma-separated annotations to skip. |  |  |
 | `throttle_network` | Simulate a slower network: `4G`, `3G`, `Edge` or `airplane`. |  |  |
-| `geo_location` | Route device traffic through a country, as an ISO code such as `US` or `DE`. |  |  |
+| `geo_country_code` | Route device traffic through a country, as an ISO code such as `US` or `DE`. |  |  |
 | `tunnel` | Starts a TestingBot Tunnel for the duration of the run, so the app can reach a staging environment that isn't publicly routable.  Cannot be combined with `run_async`. |  | `false` |
-| `tunnel_identifier` | Identifier of the tunnel to use. Set it when you run several tunnels in parallel, or to reuse a tunnel opened by the `TestingBot Tunnel` Step. |  |  |
+| `tunnel_identifier` | Identifier of the tunnel to use.  Defaults to the tunnel opened by the `TestingBot Tunnel` Step earlier in the Workflow, which exports `$TESTINGBOT_TUNNEL_IDENTIFIER`. Set it explicitly only when you run several tunnels in parallel. |  | `$TESTINGBOT_TUNNEL_IDENTIFIER` |
 | `export_to_test_reports` | Downloads the JUnit report and lays it out for Bitrise's Test Reports add-on.  You still need the `Deploy to Bitrise.io` Step afterwards — that Step is what uploads what this one exports. |  | `true` |
 | `report_output_dir` | Directory the JUnit report is downloaded into. Defaults to a temporary directory. The path is exported as `$TESTINGBOT_JUNIT_REPORT_PATH`. |  |  |
 | `cli_version` | The [TestingBot CLI](https://github.com/testingbot/testingbotctl) version this Step runs. Pinned so builds stay reproducible; set `latest` to always take the newest release. | required | `1.1.1` |

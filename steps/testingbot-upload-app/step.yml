@@ -28,6 +28,20 @@ description: |
   a name of your choice — each build then replaces the binary stored under that
   name while `tb://<your-name>` stays the same.
 
+  ### Upgrading from 0.0.1
+
+  The app path input is now called `app_path`, matching the TestingBot App
+  Automate Steps. Rename it when you move to 1.0.0:
+
+  ```yaml
+  - testingbot-upload-app:
+      inputs:
+      - app_path: $BITRISE_APK_PATH   # was: apk_ipa_filepath
+  ```
+
+  You can also just delete the line — the Step finds the preceding build
+  Step's artifact on its own.
+
   ### Troubleshooting
 
   - **HTTP 401** — the key/secret pair is wrong, or the Secret isn't exposed to
@@ -99,7 +113,7 @@ inputs:
     is_expand: true
     is_sensitive: true
 
-- apk_ipa_filepath:
+- app_path:
   opts:
     title: App path
     summary: Path to the app to upload. Auto-detected when left empty.
@@ -126,7 +140,7 @@ inputs:
 
       Useful when the artifact already lives somewhere reachable — it saves
       pushing the binary out of the build machine a second time. Takes
-      precedence over `apk_ipa_filepath`.
+      precedence over `app_path`.
     is_required: false
     is_expand: true
 
