@@ -150,6 +150,17 @@ badge. Applying requires submitting a Workflow Recipe showing the Step in use,
 and accepting the maintainer SLA: first response within 5 business days,
 resolution within 10 days (critical bug) / 15 (bug) / 20 (feature request).
 
+The recipe is written and waiting in
+[docs/workflow-recipes/](workflow-recipes/README.md). Submit it to
+[bitrise-io/workflow-recipes](https://github.com/bitrise-io/workflow-recipes)
+once the Steps it references have merged into the StepLib.
+
+The badge itself comes from `maintainer:` in `steps/<step-id>/step-info.yml` in
+the StepLib — today `testingbot-upload-app` reads `maintainer: community`. That
+field also drives the Workflow Editor's step picker filter, which is the
+practical reason to bother: it decides whether these appear under "Verified"
+alongside BrowserStack and LambdaTest, or under "Community".
+
 Two consequences worth knowing before applying:
 
 - **Never delete a mirror repository or its issue tracker.** Published
