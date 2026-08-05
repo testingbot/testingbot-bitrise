@@ -24,6 +24,7 @@ polling and its give-up path are both exercised without a real upload.
 import base64
 import json
 import re
+import socketserver
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -133,8 +134,23 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, app_payload(appkey))
 
 
+class Server(HTTPServer):
+    """HTTPServer that does not reverse-resolve its own address.
+
+    HTTPServer.server_bind calls socket.getfqdn(host), a reverse DNS lookup,
+    and it runs before we get to print the port. On a machine whose resolver is
+    slow to answer for 127.0.0.1 -- GitHub's macOS runners are -- that blocks
+    for tens of seconds, tests/run.sh gives up waiting, and the whole suite
+    fails with an empty error log. Nothing here reads server_name, so skip it.
+    """
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    server = HTTPServer(("127.0.0.1", port), Handler)
+    server = Server(("127.0.0.1", port), Handler)
     print(server.server_address[1], flush=True)
     server.serve_forever()

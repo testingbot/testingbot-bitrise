@@ -71,9 +71,22 @@ start_mock() {
   local tries=0
   while [ ! -s "${WORK}/port" ]; do
     tries=$((tries + 1))
-    if [ "$tries" -gt 100 ]; then
-      echo "mock API failed to start:" >&2
-      cat "${WORK}/mock.log" >&2
+    # 30s. The old 10s was not the problem -- HTTPServer.server_bind used to
+    # block on a reverse DNS lookup, see mock_api.py -- but a CI runner is
+    # slower than a laptop and this costs nothing when the mock starts fine.
+    if [ "$tries" -gt 300 ]; then
+      echo "mock API failed to start after 30s" >&2
+      echo "--- stderr ---" >&2
+      cat "${WORK}/mock.log" >&2 2>/dev/null || echo "(no log file)" >&2
+      echo "--- process ---" >&2
+      if kill -0 "$MOCK_PID" 2>/dev/null; then
+        echo "pid ${MOCK_PID} still running -- it started but never printed a port" >&2
+      else
+        echo "pid ${MOCK_PID} is gone -- it exited before binding" >&2
+      fi
+      echo "--- python ---" >&2
+      command -v python3 >&2 || echo "python3 not on PATH" >&2
+      python3 --version >&2 2>&1 || true
       exit 1
     fi
     sleep 0.1
